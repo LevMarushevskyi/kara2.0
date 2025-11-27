@@ -60,7 +60,7 @@ function getForwardPosition(position: Position, direction: Direction): Position 
 }
 
 /**
- * Checks if a position is valid (within bounds and not a wall)
+ * Checks if a position is valid (within bounds and not blocked)
  */
 function isValidPosition(world: World, position: Position): boolean {
   if (
@@ -72,7 +72,9 @@ function isValidPosition(world: World, position: Position): boolean {
     return false;
   }
 
-  return world.grid[position.y][position.x].type !== CellType.Wall;
+  const cellType = world.grid[position.y][position.x].type;
+  // Can move onto empty cells and clovers, but not walls, trees, or mushrooms
+  return cellType === CellType.Empty || cellType === CellType.Clover;
 }
 
 /**
