@@ -10,6 +10,9 @@ export enum Direction {
 export enum CellType {
   Empty = 'EMPTY',
   Wall = 'WALL',
+  Clover = 'CLOVER',
+  Mushroom = 'MUSHROOM',
+  Tree = 'TREE',
 }
 
 export interface Cell {

@@ -14,12 +14,18 @@ export function createWorld(width: number, height: number): World {
         .map(() => ({ type: CellType.Empty }))
     );
 
-  // Add some walls for visual interest
-  if (width > 3 && height > 3) {
-    grid[1][1] = { type: CellType.Wall };
-    grid[1][width - 2] = { type: CellType.Wall };
-    grid[height - 2][1] = { type: CellType.Wall };
-    grid[height - 2][width - 2] = { type: CellType.Wall };
+  // Add some objects for visual interest
+  if (width > 5 && height > 5) {
+    grid[2][3] = { type: CellType.Clover };
+    grid[2][4] = { type: CellType.Clover };
+    grid[3][2] = { type: CellType.Clover };
+    grid[3][5] = { type: CellType.Clover };
+    grid[4][3] = { type: CellType.Clover };
+    grid[4][4] = { type: CellType.Clover };
+    grid[5][2] = { type: CellType.Clover };
+    grid[1][1] = { type: CellType.Tree };
+    grid[1][width - 2] = { type: CellType.Tree };
+    grid[height - 2][1] = { type: CellType.Mushroom };
   }
 
   return {
