@@ -3,7 +3,7 @@ import { Code2 } from 'lucide-react';
 import WorldView from '@/components/WorldView';
 import ProgrammingPanel from '@/components/ProgrammingPanel';
 import ObjectPalette from '@/components/ObjectPalette';
-import { createWorld, moveForward, turnLeft, turnRight, resetWorld } from '@/models/world';
+import { createWorld, moveForward, turnLeft, turnRight, resetWorld, pickClover, placeClover } from '@/models/world';
 import { World, CellType, Position } from '@/models/types';
 import { CommandType, createProgram } from '@/models/program';
 import { Slider } from '@/components/ui/slider';
@@ -36,12 +36,24 @@ const Index = () => {
           newWorld = turnRight(prevWorld);
           break;
         case CommandType.PickClover:
-          // TODO: Implement pick logic
-          toast.info('Pick clover - coming soon!');
+          newWorld = pickClover(prevWorld);
+          if (newWorld === prevWorld) {
+            toast.error('No clover here to pick!');
+          } else {
+            toast.success('Picked up clover! 🍀');
+          }
           break;
         case CommandType.PlaceClover:
-          // TODO: Implement place logic
-          toast.info('Place clover - coming soon!');
+          newWorld = placeClover(prevWorld);
+          if (newWorld === prevWorld) {
+            if (prevWorld.character.inventory === 0) {
+              toast.error('No clovers in inventory!');
+            } else {
+              toast.error('Cannot place clover here!');
+            }
+          } else {
+            toast.success('Placed clover! 🍀');
+          }
           break;
       }
       

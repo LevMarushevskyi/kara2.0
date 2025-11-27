@@ -114,9 +114,14 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject }: WorldView
           })
         )}
       </div>
-      <div className="mt-4 text-center text-sm text-muted-foreground">
-        Position: ({world.character.position.x}, {world.character.position.y}) | 
-        Facing: {world.character.direction}
+      <div className="mt-4 text-center text-sm text-muted-foreground space-y-1">
+        <div>
+          Position: ({world.character.position.x}, {world.character.position.y}) | 
+          Facing: {world.character.direction}
+        </div>
+        <div className="flex items-center justify-center gap-2 text-accent font-medium">
+          <span>🍀 Inventory: {world.character.inventory}</span>
+        </div>
       </div>
     </div>
   );
