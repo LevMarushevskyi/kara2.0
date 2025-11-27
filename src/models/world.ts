@@ -73,8 +73,8 @@ function isValidPosition(world: World, position: Position): boolean {
   }
 
   const cellType = world.grid[position.y][position.x].type;
-  // Can move onto empty cells and clovers, but not walls, trees, or mushrooms
-  return cellType === CellType.Empty || cellType === CellType.Clover;
+  // Can only move onto empty cells - all objects block movement
+  return cellType === CellType.Empty;
 }
 
 /**
