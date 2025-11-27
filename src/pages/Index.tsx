@@ -140,6 +140,9 @@ const Index = () => {
   useEffect(() => {
     if (!isRunning || currentStep === -1) return;
 
+    // Execute the current command first
+    executeCommand(program[currentStep]);
+
     const timer = setTimeout(() => {
       if (currentStep >= program.length - 1) {
         setIsRunning(false);
@@ -147,7 +150,6 @@ const Index = () => {
         toast.success('Program completed!');
       } else {
         setCurrentStep(currentStep + 1);
-        executeCommand(program[currentStep + 1]);
       }
     }, executionSpeed);
 
