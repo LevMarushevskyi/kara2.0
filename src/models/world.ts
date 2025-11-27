@@ -38,6 +38,7 @@ export function createWorld(width: number, height: number): World {
         y: Math.floor(height / 2),
       },
       direction: Direction.North,
+      inventory: 0,
     },
   };
 }
@@ -142,4 +143,52 @@ export function turnRight(world: World): World {
  */
 export function resetWorld(world: World): World {
   return createWorld(world.width, world.height);
+}
+
+/**
+ * Picks up a clover at the character's current position
+ */
+export function pickClover(world: World): World {
+  const { x, y } = world.character.position;
+  const cell = world.grid[y][x];
+
+  if (cell.type !== CellType.Clover) {
+    return world; // No clover to pick
+  }
+
+  const newGrid = world.grid.map(row => [...row]);
+  newGrid[y][x] = { type: CellType.Empty };
+
+  return {
+    ...world,
+    grid: newGrid,
+    character: {
+      ...world.character,
+      inventory: world.character.inventory + 1,
+    },
+  };
+}
+
+/**
+ * Places a clover at the character's current position
+ */
+export function placeClover(world: World): World {
+  const { x, y } = world.character.position;
+  const cell = world.grid[y][x];
+
+  if (cell.type !== CellType.Empty || world.character.inventory === 0) {
+    return world; // Can't place here or no clovers in inventory
+  }
+
+  const newGrid = world.grid.map(row => [...row]);
+  newGrid[y][x] = { type: CellType.Clover };
+
+  return {
+    ...world,
+    grid: newGrid,
+    character: {
+      ...world.character,
+      inventory: world.character.inventory - 1,
+    },
+  };
 }
