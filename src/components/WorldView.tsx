@@ -90,14 +90,16 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject }: WorldView
                   ${selectedObject ? 'cursor-pointer hover:ring-2 hover:ring-accent/50' : ''}
                 `}
               >
-                {/* Cell Content */}
-                {cell.type !== CellType.Empty && !isCharacter && (
-                  <span className="text-2xl">{getCellEmoji(cell.type)}</span>
+                {/* Cell Content (show behind character if present) */}
+                {cell.type !== CellType.Empty && (
+                  <span className={`text-2xl ${isCharacter ? 'opacity-40 absolute' : ''}`}>
+                    {getCellEmoji(cell.type)}
+                  </span>
                 )}
                 
                 {/* Character */}
                 {isCharacter && (
-                  <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="absolute inset-0 flex items-center justify-center z-10">
                     <div
                       className="relative"
                       style={{
