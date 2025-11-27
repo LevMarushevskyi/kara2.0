@@ -1,24 +1,68 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Code2 } from 'lucide-react';
+import { Code2, List } from 'lucide-react';
 import WorldView from '@/components/WorldView';
 import ProgrammingPanel from '@/components/ProgrammingPanel';
 import ObjectPalette from '@/components/ObjectPalette';
+import LevelSelector from '@/components/LevelSelector';
+import LevelCompleteDialog from '@/components/LevelCompleteDialog';
 import { createWorld, moveForward, turnLeft, turnRight, resetWorld, pickClover, placeClover } from '@/models/world';
 import { World, CellType, Position } from '@/models/types';
 import { CommandType, createProgram } from '@/models/program';
+import { Scenario, saveProgress } from '@/models/scenario';
+import { scenarios, getScenarioById } from '@/models/scenarios';
 import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 const Index = () => {
-  const [world, setWorld] = useState<World>(() => createWorld(10, 10));
+  const [currentScenario, setCurrentScenario] = useState<Scenario>(scenarios[0]);
+  const [world, setWorld] = useState<World>(scenarios[0].world);
   const [program, setProgram] = useState<CommandType[]>([]);
   const [currentStep, setCurrentStep] = useState(-1);
   const [isRunning, setIsRunning] = useState(false);
   const [executionSpeed, setExecutionSpeed] = useState(500);
   const [selectedObject, setSelectedObject] = useState<CellType | null>(null);
+  const [showLevelSelector, setShowLevelSelector] = useState(false);
+  const [showLevelComplete, setShowLevelComplete] = useState(false);
+  const [levelCompleteData, setLevelCompleteData] = useState<{
+    stars: number;
+    commandCount: number;
+  }>({ stars: 0, commandCount: 0 });
 
-  const executeCommand = useCallback((command: CommandType) => {
+  const loadScenario = useCallback((scenarioId: string) => {
+    const scenario = getScenarioById(scenarioId);
+    if (!scenario) return;
+
+    setCurrentScenario(scenario);
+    setWorld(JSON.parse(JSON.stringify(scenario.world))); // Deep copy
+    setProgram([]);
+    setCurrentStep(-1);
+    setIsRunning(false);
+    setShowLevelComplete(false);
+    toast.success(`Level loaded: ${scenario.title}`);
+  }, []);
+
+  const checkGoalCondition = useCallback(() => {
+    if (currentScenario.goalCondition.check(world)) {
+      setIsRunning(false);
+      const commandCount = program.length;
+      const stars = commandCount <= 5 ? 3 : commandCount <= 10 ? 2 : 1;
+      
+      saveProgress(currentScenario.id, commandCount);
+      
+      setLevelCompleteData({ stars, commandCount });
+      setShowLevelComplete(true);
+      
+      // Confetti effect via toast
+      toast.success('🎉 Level Complete!', {
+        description: `Solved in ${commandCount} commands!`,
+      });
+    }
+  }, [world, currentScenario, program.length]);
+
+  const executeCommand = useCallback((command: CommandType, shouldCheckGoal = true) => {
     setWorld((prevWorld) => {
       let newWorld = prevWorld;
       
@@ -59,7 +103,12 @@ const Index = () => {
       
       return newWorld;
     });
-  }, []);
+    
+    // Check goal after state update
+    if (shouldCheckGoal) {
+      setTimeout(() => checkGoalCondition(), 100);
+    }
+  }, [checkGoalCondition]);
 
   const handleRun = () => {
     if (program.length === 0) {
@@ -92,6 +141,11 @@ const Index = () => {
   };
 
   const handleAddCommand = (command: CommandType) => {
+    // Check if command is allowed in current scenario
+    if (!currentScenario.allowedCommands.includes(command)) {
+      toast.error('This command is not allowed in this level!');
+      return;
+    }
     setProgram([...program, command]);
   };
 
@@ -141,11 +195,19 @@ const Index = () => {
   };
 
   const handleReset = () => {
-    setWorld(createWorld(10, 10));
-    setProgram([]);
-    setCurrentStep(-1);
-    setIsRunning(false);
-    toast.success('World reset!');
+    loadScenario(currentScenario.id);
+  };
+
+  const handleNextLevel = () => {
+    const currentIndex = scenarios.findIndex(s => s.id === currentScenario.id);
+    if (currentIndex < scenarios.length - 1) {
+      loadScenario(scenarios[currentIndex + 1].id);
+    }
+  };
+
+  const handleRetry = () => {
+    setShowLevelComplete(false);
+    handleReset();
   };
 
   // Auto-execution when running
@@ -180,10 +242,21 @@ const Index = () => {
               </div>
               <div>
                 <h1 className="text-lg font-bold">Kara Ladybug World</h1>
-                <p className="text-xs text-muted-foreground">Programming Environment</p>
+                <p className="text-xs text-muted-foreground">
+                  {currentScenario.title}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLevelSelector(true)}
+                className="gap-2"
+              >
+                <List className="h-4 w-4" />
+                Levels
+              </Button>
               <div className="text-right">
                 <div className="text-xs text-muted-foreground">Execution Speed</div>
                 <div className="flex items-center gap-2">
@@ -209,6 +282,24 @@ const Index = () => {
         <div className="grid grid-cols-[280px,1fr,280px] gap-6 h-[calc(100vh-140px)]">
           {/* Left Panel - Programming */}
           <div className="animate-in fade-in slide-in-from-left duration-500">
+            <Card className="p-4 mb-4 bg-muted/30">
+              <h3 className="text-sm font-semibold mb-2">Goal</h3>
+              <p className="text-xs text-muted-foreground">
+                {currentScenario.goalCondition.description}
+              </p>
+              {currentScenario.hints && currentScenario.hints.length > 0 && (
+                <details className="mt-3">
+                  <summary className="text-xs font-medium cursor-pointer hover:text-accent">
+                    💡 Hints
+                  </summary>
+                  <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    {currentScenario.hints.map((hint, i) => (
+                      <li key={i}>• {hint}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </Card>
             <ProgrammingPanel
               program={program}
               currentStep={currentStep}
@@ -232,22 +323,62 @@ const Index = () => {
             />
           </div>
 
-          {/* Right Panel - Objects & Info */}
+          {/* Right Panel - Info */}
           <div className="space-y-4 animate-in fade-in slide-in-from-right duration-500">
-            <ObjectPalette onSelectObject={setSelectedObject} />
+            <Card className="p-4">
+              <h3 className="text-sm font-semibold mb-3">Level Info</h3>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Difficulty:</span>
+                  <span className="font-medium capitalize">{currentScenario.difficulty}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Commands:</span>
+                  <span className="font-medium">{currentScenario.allowedCommands.length}</span>
+                </div>
+              </div>
+            </Card>
             
             <Card className="p-4">
               <h3 className="text-sm font-semibold mb-3">Quick Guide</h3>
               <div className="space-y-2 text-xs text-muted-foreground">
                 <p>• Drag commands to build a program</p>
-                <p>• Drag objects onto the grid</p>
-                <p>• Click Run to execute</p>
-                <p>• Use Step to debug</p>
+                <p>• Click Run to execute all steps</p>
+                <p>• Use Step to debug one at a time</p>
+                <p>• Complete the goal to win!</p>
               </div>
             </Card>
           </div>
         </div>
       </main>
+
+      {/* Level Selector Dialog */}
+      <Dialog open={showLevelSelector} onOpenChange={setShowLevelSelector}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <LevelSelector
+            currentScenarioId={currentScenario.id}
+            onSelectScenario={loadScenario}
+            onClose={() => setShowLevelSelector(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Level Complete Dialog */}
+      <LevelCompleteDialog
+        isOpen={showLevelComplete}
+        levelTitle={currentScenario.title}
+        commandCount={levelCompleteData.commandCount}
+        stars={levelCompleteData.stars}
+        onNextLevel={handleNextLevel}
+        onRetry={handleRetry}
+        onLevelSelect={() => {
+          setShowLevelComplete(false);
+          setShowLevelSelector(true);
+        }}
+        hasNextLevel={
+          scenarios.findIndex(s => s.id === currentScenario.id) < scenarios.length - 1
+        }
+      />
     </div>
   );
 };
