@@ -33,9 +33,7 @@ const LevelSelector = ({ currentScenarioId, onSelectScenario, onClose }: LevelSe
           <Star
             key={i}
             className={`h-3 w-3 ${
-              i <= stars
-                ? 'fill-yellow-500 text-yellow-500'
-                : 'text-muted-foreground/30'
+              i <= stars ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground/30'
             }`}
           />
         ))}
@@ -43,21 +41,19 @@ const LevelSelector = ({ currentScenarioId, onSelectScenario, onClose }: LevelSe
     );
   };
 
-  const allProgress = scenarios.map(scenario => ({
+  const allProgress = scenarios.map((scenario) => ({
     scenario,
     progress: getScenarioProgress(scenario.id),
   }));
 
-  const completedCount = allProgress.filter(p => p.progress?.completed).length;
+  const completedCount = allProgress.filter((p) => p.progress?.completed).length;
 
   return (
     <Card className="w-full max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">Level Select</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Choose a challenge to solve
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">Choose a challenge to solve</p>
         </div>
         <div className="flex items-center gap-2">
           <Trophy className="h-5 w-5 text-yellow-500" />
@@ -104,14 +100,10 @@ const LevelSelector = ({ currentScenarioId, onSelectScenario, onClose }: LevelSe
                       </Badge>
                     </div>
 
-                    <p className="text-sm text-muted-foreground mb-2">
-                      {scenario.description}
-                    </p>
+                    <p className="text-sm text-muted-foreground mb-2">{scenario.description}</p>
 
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span>
-                        {scenario.allowedCommands.length} commands available
-                      </span>
+                      <span>{scenario.allowedCommands.length} commands available</span>
                       {progress?.completed && (
                         <>
                           {renderStars(progress.stars)}

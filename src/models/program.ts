@@ -23,6 +23,32 @@ export const availableCommands: Command[] = [
   { id: 'place', type: CommandType.PlaceClover, label: 'Place Clover', icon: '⬇' },
 ];
 
+/**
+ * Repeat the last N commands in a program X times
+ * @param program - The current program
+ * @param commandCount - Number of commands to repeat from the end
+ * @param times - Number of times to repeat
+ * @returns New program with repeated commands
+ */
+export function repeatLastCommands(
+  program: CommandType[],
+  commandCount: number,
+  times: number
+): CommandType[] {
+  if (commandCount <= 0 || times <= 0 || commandCount > program.length) {
+    return program;
+  }
+
+  const commandsToRepeat = program.slice(-commandCount);
+  const newCommands: CommandType[] = [];
+
+  for (let i = 0; i < times; i++) {
+    newCommands.push(...commandsToRepeat);
+  }
+
+  return [...program, ...newCommands];
+}
+
 export interface Program {
   commands: CommandType[];
   currentStep: number;

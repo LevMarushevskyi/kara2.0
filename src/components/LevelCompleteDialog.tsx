@@ -38,12 +38,8 @@ const LevelCompleteDialog = ({
               <Trophy className="h-10 w-10 text-white" />
             </div>
           </div>
-          <DialogTitle className="text-center text-2xl">
-            Level Complete! 🎉
-          </DialogTitle>
-          <DialogDescription className="text-center text-base">
-            {levelTitle}
-          </DialogDescription>
+          <DialogTitle className="text-center text-2xl">Level Complete! 🎉</DialogTitle>
+          <DialogDescription className="text-center text-base">{levelTitle}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">

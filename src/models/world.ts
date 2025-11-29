@@ -60,33 +60,85 @@ function getForwardPosition(position: Position, direction: Direction): Position 
 }
 
 /**
+ * Checks if a position is within bounds
+ */
+function isInBounds(world: World, position: Position): boolean {
+  return (
+    position.x >= 0 && position.x < world.width && position.y >= 0 && position.y < world.height
+  );
+}
+
+/**
  * Checks if a position is valid (within bounds and not blocked)
  */
 function isValidPosition(world: World, position: Position): boolean {
-  if (
-    position.x < 0 ||
-    position.x >= world.width ||
-    position.y < 0 ||
-    position.y >= world.height
-  ) {
+  if (!isInBounds(world, position)) {
     return false;
   }
 
   const cellType = world.grid[position.y][position.x].type;
-  // Can move onto empty cells and clovers, but not walls, trees, or mushrooms
+  // Can move onto empty cells and clovers, but NOT walls or trees
+  // Mushrooms are handled separately (can be pushed)
   return cellType === CellType.Empty || cellType === CellType.Clover;
+}
+
+/**
+ * Checks if a mushroom can be pushed in a given direction
+ */
+function canPushMushroom(world: World, mushroomPos: Position, direction: Direction): boolean {
+  const pushToPos = getForwardPosition(mushroomPos, direction);
+
+  if (!isInBounds(world, pushToPos)) {
+    return false; // Can't push mushroom out of bounds
+  }
+
+  const targetCellType = world.grid[pushToPos.y][pushToPos.x].type;
+  // Mushroom can only be pushed to empty cells
+  return targetCellType === CellType.Empty;
 }
 
 /**
  * Moves the character forward one step if possible
  * Returns a new World with updated character position
+ * Handles pushing mushrooms if necessary
  */
 export function moveForward(world: World): World {
-  const newPosition = getForwardPosition(
-    world.character.position,
-    world.character.direction
-  );
+  const newPosition = getForwardPosition(world.character.position, world.character.direction);
 
+  if (!isInBounds(world, newPosition)) {
+    return world; // Can't move out of bounds
+  }
+
+  const targetCellType = world.grid[newPosition.y][newPosition.x].type;
+
+  // Check if there's a mushroom to push
+  if (targetCellType === CellType.Mushroom) {
+    // Try to push the mushroom
+    if (!canPushMushroom(world, newPosition, world.character.direction)) {
+      return world; // Can't push mushroom (blocked or edge)
+    }
+
+    // Push the mushroom
+    const mushroomNewPos = getForwardPosition(newPosition, world.character.direction);
+    const newGrid = world.grid.map((row) => [...row]);
+
+    // Move mushroom to new position
+    newGrid[mushroomNewPos.y][mushroomNewPos.x] = { type: CellType.Mushroom };
+    // Clear old mushroom position
+    newGrid[newPosition.y][newPosition.x] = { type: CellType.Empty };
+
+    // Move character into mushroom's old position
+    return {
+      ...world,
+      grid: newGrid,
+      character: {
+        ...world.character,
+        position: newPosition,
+      },
+    };
+  }
+
+  // Normal movement (no mushroom)
   if (!isValidPosition(world, newPosition)) {
     return world; // Can't move, return unchanged world
   }
@@ -158,7 +210,7 @@ export function pickClover(world: World): World {
     return world; // No clover to pick
   }
 
-  const newGrid = world.grid.map(row => [...row]);
+  const newGrid = world.grid.map((row) => [...row]);
   newGrid[y][x] = { type: CellType.Empty };
 
   return {
@@ -182,7 +234,7 @@ export function placeClover(world: World): World {
     return world; // Can't place here or no clovers in inventory
   }
 
-  const newGrid = world.grid.map(row => [...row]);
+  const newGrid = world.grid.map((row) => [...row]);
   newGrid[y][x] = { type: CellType.Clover };
 
   return {

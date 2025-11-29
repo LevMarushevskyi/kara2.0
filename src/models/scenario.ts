@@ -23,28 +23,25 @@ export interface Scenario {
 export const goalConditions = {
   collectAllClovers: (): GoalCondition => ({
     check: (world: World) => {
-      return world.grid.every(row => 
-        row.every(cell => cell.type !== CellType.Clover)
-      );
+      return world.grid.every((row) => row.every((cell) => cell.type !== CellType.Clover));
     },
     description: 'Collect all clovers from the world',
   }),
 
   reachPosition: (targetX: number, targetY: number): GoalCondition => ({
     check: (world: World) => {
-      return world.character.position.x === targetX && 
-             world.character.position.y === targetY;
+      return world.character.position.x === targetX && world.character.position.y === targetY;
     },
     description: `Reach position (${targetX}, ${targetY})`,
   }),
 
   collectCloversAndReturn: (startX: number, startY: number): GoalCondition => ({
     check: (world: World) => {
-      const allCloversCollected = world.grid.every(row => 
-        row.every(cell => cell.type !== CellType.Clover)
+      const allCloversCollected = world.grid.every((row) =>
+        row.every((cell) => cell.type !== CellType.Clover)
       );
-      const atStart = world.character.position.x === startX && 
-                      world.character.position.y === startY;
+      const atStart =
+        world.character.position.x === startX && world.character.position.y === startY;
       return allCloversCollected && atStart;
     },
     description: 'Collect all clovers and return to start',
@@ -73,9 +70,9 @@ export const goalConditions = {
 
   combined: (...conditions: GoalCondition[]): GoalCondition => ({
     check: (world: World) => {
-      return conditions.every(condition => condition.check(world));
+      return conditions.every((condition) => condition.check(world));
     },
-    description: conditions.map(c => c.description).join(' AND '),
+    description: conditions.map((c) => c.description).join(' AND '),
   }),
 };
 
@@ -97,17 +94,14 @@ export function getProgress(): ScenarioProgress[] {
 
 export function saveProgress(scenarioId: string, commandCount: number): void {
   const progress = getProgress();
-  const existing = progress.find(p => p.scenarioId === scenarioId);
-  
+  const existing = progress.find((p) => p.scenarioId === scenarioId);
+
   const stars = commandCount <= 5 ? 3 : commandCount <= 10 ? 2 : 1;
-  
+
   if (existing) {
     existing.completed = true;
     existing.stars = Math.max(existing.stars, stars);
-    existing.bestCommandCount = Math.min(
-      existing.bestCommandCount || Infinity,
-      commandCount
-    );
+    existing.bestCommandCount = Math.min(existing.bestCommandCount || Infinity, commandCount);
     existing.completedAt = new Date().toISOString();
   } else {
     progress.push({
@@ -118,10 +112,10 @@ export function saveProgress(scenarioId: string, commandCount: number): void {
       completedAt: new Date().toISOString(),
     });
   }
-  
+
   localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
 }
 
 export function getScenarioProgress(scenarioId: string): ScenarioProgress | undefined {
-  return getProgress().find(p => p.scenarioId === scenarioId);
+  return getProgress().find((p) => p.scenarioId === scenarioId);
 }

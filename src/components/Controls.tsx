@@ -13,9 +13,7 @@ const Controls = ({ onMoveForward, onTurnLeft, onTurnRight, onReset }: ControlsP
     <div className="space-y-4">
       <div className="text-center">
         <h3 className="text-lg font-semibold mb-2">Controls</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Move the ladybug robot around the grid
-        </p>
+        <p className="text-sm text-muted-foreground mb-4">Move the ladybug robot around the grid</p>
       </div>
 
       <div className="flex flex-col gap-2">

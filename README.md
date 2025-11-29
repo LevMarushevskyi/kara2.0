@@ -67,35 +67,35 @@ Keeping the engine pure and UI-agnostic makes it easy to test and extend later (
 
 ### Level / Scenario System
 
-- [ ] Level (Scenario) model with:
-  - [ ] Initial world layout
-  - [ ] Allowed commands
-  - [ ] Starting ladybug position and direction
-  - [ ] `goalCondition(world)` function
-- [ ] Level selector UI
-- [ ] “Level complete” detection and success UI
-- [ ] Persisted level progress (e.g., `localStorage`)
+- [x] Level (Scenario) model with:
+  - [x] Initial world layout
+  - [x] Allowed commands
+  - [x] Starting ladybug position and direction
+  - [x] `goalCondition(world)` function
+- [x] Level selector UI
+- [x] "Level complete" detection and success UI
+- [x] Persisted level progress (localStorage)
 
 ### Editing & UX Enhancements
 
-- [ ] Advanced world editor features (drag to paint, clear world, preset templates)
-- [ ] Export / Import worlds and programs as JSON
-- [ ] Undo / Redo for world edits and program edits
-- [ ] Keyboard shortcuts (e.g., arrow keys for navigation, space to step)
-- [ ] Accessibility improvements (focus states, ARIA labels, high-contrast mode)
+- [x] Advanced world editor features (drag to paint, clear world, preset templates)
+- [x] Export / Import worlds and programs as JSON
+- [x] Undo / Redo for program edits (Ctrl+Z, Ctrl+Y)
+- [x] Keyboard shortcuts (Space, S, R, C, L, Ctrl+S, Ctrl+Z, Ctrl+Y)
+- [x] Accessibility improvements (focus states, ARIA labels, screen reader support, keyboard navigation)
 
 ### Engine & Pedagogy Extensions
 
 - [ ] Optional finite-state-machine (FSM) programming mode
-- [ ] Support for loops / simple control structures (e.g., “repeat n times”)
-- [ ] Built-in tutorial / walkthrough levels
+- [x] Support for loops / simple control structures (e.g., "repeat n times")
+- [x] Built-in tutorial / walkthrough levels
 - [ ] Teacher view (shareable links to specific levels/programs)
 
 ### Quality & Tooling
 
-- [ ] Unit tests for the simulation engine
+- [x] Unit tests for the simulation engine (68 tests covering world model, commands, and scenarios)
 - [ ] Component tests for core UI
-- [ ] Linting + formatting scripts
+- [x] Linting + formatting scripts (ESLint, Prettier, TypeScript type checking)
 - [ ] Production build + deployment pipeline (GitHub Actions / Vercel / Netlify)
 
 ---

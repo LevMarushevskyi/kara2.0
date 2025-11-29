@@ -108,10 +108,7 @@ export const scenarios: Scenario[] = [
         inventory: 0,
       },
     },
-    allowedCommands: [
-      CommandType.MoveForward,
-      CommandType.PickClover,
-    ],
+    allowedCommands: [CommandType.MoveForward, CommandType.PickClover],
     goalCondition: goalConditions.collectAllClovers(),
     hints: ['Move and pick, move and pick, move and pick!'],
   },
@@ -139,13 +136,9 @@ export const scenarios: Scenario[] = [
         inventory: 0,
       },
     },
-    allowedCommands: [
-      CommandType.MoveForward,
-      CommandType.TurnRight,
-      CommandType.PickClover,
-    ],
+    allowedCommands: [CommandType.MoveForward, CommandType.TurnRight, CommandType.PickClover],
     goalCondition: goalConditions.collectAllClovers(),
-    hints: ['Think about moving in a pattern', 'You\'ll need to turn right several times'],
+    hints: ['Think about moving in a pattern', "You'll need to turn right several times"],
   },
 
   {
@@ -263,5 +256,5 @@ export const scenarios: Scenario[] = [
 ];
 
 export function getScenarioById(id: string): Scenario | undefined {
-  return scenarios.find(s => s.id === id);
+  return scenarios.find((s) => s.id === id);
 }
