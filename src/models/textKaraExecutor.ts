@@ -1,6 +1,6 @@
 // Text-based Kara code executor (JavaKara, PythonKara, JavaScriptKara, RubyKara)
 
-import { World, Direction } from './types';
+import { World, Direction, CellType } from './types';
 import { moveForward, turnLeft, turnRight, pickClover, placeClover } from './world';
 import { TextKaraLanguage } from './textKara';
 
@@ -528,8 +528,309 @@ export type CommandName = 'move' | 'turnLeft' | 'turnRight' | 'putLeaf' | 'remov
                           'turn_left' | 'turn_right' | 'put_leaf' | 'remove_leaf';
 
 /**
- * Parses text-based Kara code and extracts a flat list of commands.
- * This is a simplified interpreter that handles basic control flow.
+ * Streaming interpreter state for step-by-step execution
+ * This allows infinite loops to be executed one step at a time by
+ * running the program in small batches and yielding control between batches.
+ */
+export interface StreamingInterpreterState {
+  // The simulated world state for sensor evaluation
+  simWorld: World;
+  // Pending commands to execute
+  pendingCommands: CommandName[];
+  // Index of next command to return
+  nextCommandIndex: number;
+  // Whether execution is complete
+  done: boolean;
+  // Any error that occurred
+  error?: string;
+  // The transpiled JS code
+  jsCode: string;
+  // Batch execution state
+  batchSize: number;
+  totalCommandsGenerated: number;
+}
+
+/**
+ * Creates a streaming interpreter that generates commands in batches.
+ * This allows infinite loops to execute step-by-step without blocking.
+ */
+export function createStreamingInterpreter(
+  code: string,
+  language: TextKaraLanguage,
+  world: World
+): { interpreter: StreamingInterpreterState | null; error?: string } {
+  const mainCode = extractMainCode(code, language);
+
+  if (!mainCode) {
+    return {
+      interpreter: null,
+      error: `Could not find main program. Make sure you have a ${
+        language === 'PythonKara' || language === 'RubyKara'
+          ? 'my_program'
+          : 'myProgram'
+      } method.`,
+    };
+  }
+
+  // Transpile to JavaScript
+  const jsCode = transpileToJS(mainCode, language);
+
+  // Validate the code by trying to parse it
+  try {
+    new Function('kara', jsCode);
+  } catch (error) {
+    return {
+      interpreter: null,
+      error: `Syntax error: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  return {
+    interpreter: {
+      simWorld: JSON.parse(JSON.stringify(world)),
+      pendingCommands: [],
+      nextCommandIndex: 0,
+      done: false,
+      jsCode,
+      batchSize: 100, // Generate commands in batches of 100
+      totalCommandsGenerated: 0,
+    },
+  };
+}
+
+/**
+ * Generates more commands by running the program with a step limit.
+ * Returns true if more commands were generated, false if program ended.
+ */
+function generateMoreCommands(state: StreamingInterpreterState): boolean {
+  if (state.done || state.error) return false;
+
+  const commands: CommandName[] = [];
+  let commandCount = 0;
+  const maxCommands = state.batchSize;
+
+  const getTargetPosition = (dir: string, x: number, y: number) => {
+    switch (dir) {
+      case 'NORTH': return { x, y: y - 1 };
+      case 'SOUTH': return { x, y: y + 1 };
+      case 'EAST': return { x: x + 1, y };
+      case 'WEST': return { x: x - 1, y };
+      default: return { x, y };
+    }
+  };
+
+  const getLeftPosition = (dir: string, x: number, y: number) => {
+    switch (dir) {
+      case 'NORTH': return { x: x - 1, y };
+      case 'SOUTH': return { x: x + 1, y };
+      case 'EAST': return { x, y: y - 1 };
+      case 'WEST': return { x, y: y + 1 };
+      default: return { x, y };
+    }
+  };
+
+  const getRightPosition = (dir: string, x: number, y: number) => {
+    switch (dir) {
+      case 'NORTH': return { x: x + 1, y };
+      case 'SOUTH': return { x: x - 1, y };
+      case 'EAST': return { x, y: y + 1 };
+      case 'WEST': return { x, y: y - 1 };
+      default: return { x, y };
+    }
+  };
+
+  const isBlocked = (pos: { x: number; y: number }) => {
+    if (pos.x < 0 || pos.x >= state.simWorld.width || pos.y < 0 || pos.y >= state.simWorld.height) {
+      return true;
+    }
+    const cell = state.simWorld.grid[pos.y][pos.x];
+    return cell.type === 'TREE';
+  };
+
+  const hasMushroom = (pos: { x: number; y: number }) => {
+    if (pos.x < 0 || pos.x >= state.simWorld.width || pos.y < 0 || pos.y >= state.simWorld.height) {
+      return false;
+    }
+    return state.simWorld.grid[pos.y][pos.x].type === 'MUSHROOM';
+  };
+
+  // Custom error to break out of execution when we have enough commands
+  class BatchLimitReached extends Error {
+    constructor() {
+      super('BatchLimitReached');
+      this.name = 'BatchLimitReached';
+    }
+  }
+
+  const kara = {
+    move: () => {
+      commandCount++;
+      commands.push('move');
+      const target = getTargetPosition(
+        state.simWorld.character.direction,
+        state.simWorld.character.position.x,
+        state.simWorld.character.position.y
+      );
+      if (!isBlocked(target)) {
+        state.simWorld.character.position = target;
+      }
+      if (commandCount >= maxCommands) throw new BatchLimitReached();
+    },
+    turnLeft: () => {
+      commandCount++;
+      commands.push('turnLeft');
+      const dirs = [Direction.North, Direction.West, Direction.South, Direction.East];
+      const idx = dirs.indexOf(state.simWorld.character.direction);
+      state.simWorld.character.direction = dirs[(idx + 1) % 4];
+      if (commandCount >= maxCommands) throw new BatchLimitReached();
+    },
+    turnRight: () => {
+      commandCount++;
+      commands.push('turnRight');
+      const dirs = [Direction.North, Direction.East, Direction.South, Direction.West];
+      const idx = dirs.indexOf(state.simWorld.character.direction);
+      state.simWorld.character.direction = dirs[(idx + 1) % 4];
+      if (commandCount >= maxCommands) throw new BatchLimitReached();
+    },
+    putLeaf: () => {
+      commandCount++;
+      commands.push('putLeaf');
+      if (commandCount >= maxCommands) throw new BatchLimitReached();
+    },
+    removeLeaf: () => {
+      commandCount++;
+      commands.push('removeLeaf');
+      const { x, y } = state.simWorld.character.position;
+      if (state.simWorld.grid[y][x].type === 'CLOVER') {
+        state.simWorld.grid[y][x] = { type: CellType.Empty };
+      }
+      if (commandCount >= maxCommands) throw new BatchLimitReached();
+    },
+    turn_left: function() { this.turnLeft(); },
+    turn_right: function() { this.turnRight(); },
+    put_leaf: function() { this.putLeaf(); },
+    remove_leaf: function() { this.removeLeaf(); },
+    treeFront: () => {
+      const target = getTargetPosition(
+        state.simWorld.character.direction,
+        state.simWorld.character.position.x,
+        state.simWorld.character.position.y
+      );
+      return isBlocked(target);
+    },
+    treeLeft: () => {
+      const target = getLeftPosition(
+        state.simWorld.character.direction,
+        state.simWorld.character.position.x,
+        state.simWorld.character.position.y
+      );
+      return isBlocked(target);
+    },
+    treeRight: () => {
+      const target = getRightPosition(
+        state.simWorld.character.direction,
+        state.simWorld.character.position.x,
+        state.simWorld.character.position.y
+      );
+      return isBlocked(target);
+    },
+    mushroomFront: () => {
+      const target = getTargetPosition(
+        state.simWorld.character.direction,
+        state.simWorld.character.position.x,
+        state.simWorld.character.position.y
+      );
+      return hasMushroom(target);
+    },
+    onLeaf: () => {
+      const { x, y } = state.simWorld.character.position;
+      return state.simWorld.grid[y][x].type === 'CLOVER';
+    },
+    tree_front: function() { return this.treeFront(); },
+    tree_left: function() { return this.treeLeft(); },
+    tree_right: function() { return this.treeRight(); },
+    mushroom_front: function() { return this.mushroomFront(); },
+    on_leaf: function() { return this.onLeaf(); },
+  };
+
+  try {
+    const execFn = new Function('kara', state.jsCode);
+    execFn(kara);
+    // If we get here, the program completed normally
+    state.pendingCommands.push(...commands);
+    state.totalCommandsGenerated += commands.length;
+    state.done = true;
+    return commands.length > 0;
+  } catch (error) {
+    if (error instanceof BatchLimitReached) {
+      // We hit our batch limit - add commands and continue later
+      state.pendingCommands.push(...commands);
+      state.totalCommandsGenerated += commands.length;
+      return true;
+    }
+    // Real error
+    state.error = `Execution error: ${error instanceof Error ? error.message : String(error)}`;
+    state.done = true;
+    return false;
+  }
+}
+
+/**
+ * Gets the next command from the streaming interpreter.
+ * Returns null if done or error, otherwise returns the next command.
+ */
+export function getNextStreamingCommand(
+  state: StreamingInterpreterState
+): { command: CommandName | null; done: boolean; error?: string } {
+  if (state.error) {
+    return { command: null, done: true, error: state.error };
+  }
+
+  // If we have pending commands, return the next one
+  if (state.nextCommandIndex < state.pendingCommands.length) {
+    const command = state.pendingCommands[state.nextCommandIndex];
+    state.nextCommandIndex++;
+    return { command, done: false };
+  }
+
+  // If program is done and no more commands, we're finished
+  if (state.done) {
+    return { command: null, done: true };
+  }
+
+  // Need to generate more commands - but this would block for infinite loops
+  // Instead, we generate in the background and this call will get more next time
+  // For now, generate one more batch synchronously
+  const hasMore = generateMoreCommands(state);
+
+  if (state.error) {
+    return { command: null, done: true, error: state.error };
+  }
+
+  if (hasMore && state.nextCommandIndex < state.pendingCommands.length) {
+    const command = state.pendingCommands[state.nextCommandIndex];
+    state.nextCommandIndex++;
+    return { command, done: false };
+  }
+
+  return { command: null, done: state.done };
+}
+
+/**
+ * Resets the streaming interpreter to use the actual world state.
+ * This syncs the interpreter's simulation with the real world after each command.
+ */
+export function syncStreamingInterpreterWorld(
+  state: StreamingInterpreterState,
+  actualWorld: World
+): void {
+  state.simWorld = JSON.parse(JSON.stringify(actualWorld));
+}
+
+/**
+ * Legacy function - parses and collects ALL commands upfront.
+ * Only use this for programs that are known to terminate.
+ * For infinite loops, use createTextKaraInterpreter instead.
  */
 export function parseTextKaraCommands(
   code: string,

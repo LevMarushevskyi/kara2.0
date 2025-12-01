@@ -37,7 +37,13 @@ import {
   saveCode,
   loadCode,
 } from '@/models/textKara';
-import { validateTextKaraCode, parseTextKaraCommands, executeSingleCommand, CommandName } from '@/models/textKaraExecutor';
+import {
+  validateTextKaraCode,
+  executeSingleCommand,
+  createStreamingInterpreter,
+  getNextStreamingCommand,
+  StreamingInterpreterState,
+} from '@/models/textKaraExecutor';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { useScreenReader } from '@/hooks/useScreenReader';
@@ -132,10 +138,10 @@ const Index = () => {
   const [jsKaraCode, setJsKaraCode] = useState<string>(() => loadCode('JavaScriptKara'));
   const [rubyKaraCode, setRubyKaraCode] = useState<string>(() => loadCode('RubyKara'));
 
-  // Text-based code execution state
-  const [textKaraCommands, setTextKaraCommands] = useState<CommandName[]>([]);
-  const [textKaraStep, setTextKaraStep] = useState<number>(-1);
+  // Text-based code execution state (streaming interpreter for infinite loop support)
+  const [textKaraInterpreter, setTextKaraInterpreter] = useState<StreamingInterpreterState | null>(null);
   const [isTextKaraRunning, setIsTextKaraRunning] = useState(false);
+  const [textKaraStepCount, setTextKaraStepCount] = useState(0); // Trigger for useEffect
 
   // Check if this is the user's first visit
   useEffect(() => {
@@ -333,27 +339,22 @@ const Index = () => {
         return;
       }
 
-      // Parse the code into commands for step-by-step execution
-      const parseResult = parseTextKaraCommands(code, lang, world);
+      // Create a streaming interpreter for step-by-step execution
+      // This allows infinite loops to run without blocking
+      const result = createStreamingInterpreter(code, lang, world);
 
-      if (parseResult.error) {
-        toast.error(parseResult.error);
-        announce(`Parse error: ${parseResult.error}`, 'assertive');
-        return;
-      }
-
-      if (parseResult.commands.length === 0) {
-        toast.info('No commands to execute');
-        announce('No commands to execute');
+      if (result.error || !result.interpreter) {
+        toast.error(result.error || 'Failed to create interpreter');
+        announce(`Error: ${result.error}`, 'assertive');
         return;
       }
 
       // Start step-by-step execution
-      setTextKaraCommands(parseResult.commands);
-      setTextKaraStep(0);
+      setTextKaraInterpreter(result.interpreter);
+      setTextKaraStepCount(0);
       setIsTextKaraRunning(true);
-      toast.success(`Code started! (${parseResult.commands.length} commands)`);
-      announce(`Code started with ${parseResult.commands.length} commands`);
+      toast.success('Code started!');
+      announce('Code started');
       return;
     }
 
@@ -732,22 +733,41 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFsmRunning, fsmCurrentState, fsmStepTrigger, executionSpeed]);
 
-  // Text-based code auto-execution
+  // Text-based code auto-execution (streaming interpreter)
   useEffect(() => {
-    if (!isTextKaraRunning || textKaraStep < 0 || textKaraStep >= textKaraCommands.length) return;
+    if (!isTextKaraRunning || !textKaraInterpreter) return;
 
-    // Execute the current command
-    const command = textKaraCommands[textKaraStep];
-    const result = executeSingleCommand(command, world);
+    // Get the next command from the streaming interpreter
+    const commandResult = getNextStreamingCommand(textKaraInterpreter);
+
+    // Check if we hit an error during command generation
+    if (commandResult.error) {
+      setIsTextKaraRunning(false);
+      setTextKaraInterpreter(null);
+      toast.error(commandResult.error);
+      announce(`Execution error: ${commandResult.error}`, 'assertive');
+      return;
+    }
+
+    // Check if program is done
+    if (commandResult.done || !commandResult.command) {
+      setIsTextKaraRunning(false);
+      setTextKaraInterpreter(null);
+      toast.success('Code executed successfully!');
+      announce('Code executed successfully');
+      return;
+    }
+
+    // Execute the command
+    const result = executeSingleCommand(commandResult.command, world);
 
     // Update the world
     setWorld(result.world);
 
-    // Check if we hit an error
+    // Check if we hit an error during command execution
     if (result.error) {
       setIsTextKaraRunning(false);
-      setTextKaraStep(-1);
-      setTextKaraCommands([]);
+      setTextKaraInterpreter(null);
       toast.error(result.error);
       announce(`Execution error: ${result.error}`, 'assertive');
       return;
@@ -755,21 +775,12 @@ const Index = () => {
 
     // Schedule the next step
     const timer = setTimeout(() => {
-      if (textKaraStep >= textKaraCommands.length - 1) {
-        // Completed
-        setIsTextKaraRunning(false);
-        setTextKaraStep(-1);
-        setTextKaraCommands([]);
-        toast.success('Code executed successfully!');
-        announce('Code executed successfully');
-      } else {
-        setTextKaraStep(textKaraStep + 1);
-      }
+      setTextKaraStepCount(prev => prev + 1);
     }, executionSpeed);
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTextKaraRunning, textKaraStep, textKaraCommands, executionSpeed]);
+  }, [isTextKaraRunning, textKaraInterpreter, textKaraStepCount, executionSpeed]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
@@ -987,7 +998,7 @@ const Index = () => {
                           setPendingWidth(newWidth);
                         }}
                         disabled={isResizingMap}
-                        className="w-full px-2 py-1 text-sm border rounded disabled:opacity-50 bg-background text-foreground border-input"
+                        className="w-full px-2 py-1 text-sm border rounded disabled:opacity-50 bg-background text-foreground border-input caret-black dark:caret-white"
                       />
                     </div>
                     <div>
@@ -1004,7 +1015,7 @@ const Index = () => {
                           setPendingHeight(newHeight);
                         }}
                         disabled={isResizingMap}
-                        className="w-full px-2 py-1 text-sm border rounded disabled:opacity-50 bg-background text-foreground border-input"
+                        className="w-full px-2 py-1 text-sm border rounded disabled:opacity-50 bg-background text-foreground border-input caret-black dark:caret-white"
                       />
                     </div>
                     <Button
@@ -1311,8 +1322,7 @@ const Index = () => {
                         setIsFsmRunning(false);
                         setFsmCurrentState(null);
                         setIsTextKaraRunning(false);
-                        setTextKaraStep(-1);
-                        setTextKaraCommands([]);
+                        setTextKaraInterpreter(null);
                         toast.info('Execution ended');
                       }}
                       disabled={currentStep === -1 && !isRunning && !isFsmRunning && !isTextKaraRunning}

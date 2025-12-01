@@ -125,7 +125,7 @@ Pure TypeScript modules with no React dependencies. Fully testable and reusable.
 ---
 
 
-### Done
+### Done (incomplete feature list)
 
 ## Core App
 

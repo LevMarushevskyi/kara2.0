@@ -665,7 +665,7 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
                           ),
                         });
                       }}
-                      className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background"
+                      className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground caret-black dark:caret-white"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       {state.name.length}/15 characters
@@ -874,7 +874,7 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
                                         handleUpdateRowTarget(row.id, e.target.value);
                                       }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="px-2 py-1 text-sm border border-border rounded-md bg-background min-w-[120px]"
+                                      className="px-2 py-1 text-sm border border-border rounded-md bg-background text-foreground min-w-[120px]"
                                     >
                                       {program.states.map((s) => (
                                         <option key={s.id} value={s.id}>
