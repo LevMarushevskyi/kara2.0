@@ -102,17 +102,17 @@ Pure TypeScript modules with no React dependencies. Fully testable and reusable.
 
 ## Other Kara Variants To Add
 
-- [ ] MultiKara (concurrent programming with multiple ladybugs)
-- [ ] TuringKara (Turing machine programming mode)
-- [ ] GreenFootKara (GreenFoot-style programming mode)
-- [ ] GamegridKara (GameGrid-style programming mode)
+- [ ] MultiKara 
+- [ ] TuringKara 
+- [ ] GreenFootKara 
+- [ ] GamegridKara 
 
-## In Development (May Have Bugs)
+## In Development (Not tested and compatible with OG)
 
-- [ ] PythonKara programming mode (Python syntax for Kara commands)
-- [ ] JavaScriptKara programming mode (JavaScript syntax for Kara commands)
-- [ ] RubyKara programming mode (Ruby syntax for Kara commands)
-- [ ] ScratchKara (block-based visual programming mode)
+- [ ] PythonKara programming mode 
+- [ ] JavaScriptKara programming mode 
+- [ ] RubyKara programming mode 
+- [ ] ScratchKara
 
 ## Misc
 
@@ -120,6 +120,8 @@ Pure TypeScript modules with no React dependencies. Fully testable and reusable.
 - [ ] Implement actual exercises from legacy version
 - [ ] Ensure upload/download works through all test cases
 - [ ] Add Mobile compatability?
+- [ ] Fix comment functionallity in IDE
+- [ ] Add determinisitc/non-deterministic modes
 
 
 ---
