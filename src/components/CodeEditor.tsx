@@ -539,7 +539,6 @@ const CodeEditor = ({ code, language, onChange }: CodeEditorProps) => {
             className="absolute inset-0 w-full h-full py-2 px-3 bg-transparent text-transparent caret-black dark:caret-white resize-none outline-none whitespace-pre overflow-auto z-10"
             style={{
               lineHeight: '24px',
-              caretColor: 'black',
               WebkitTextFillColor: 'transparent',
             }}
             spellCheck={false}
