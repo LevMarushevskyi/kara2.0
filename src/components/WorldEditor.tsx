@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CellType, World } from '@/models/types';
+import { parseWorldContent } from '@/models/worldTemplates';
 import { DragEvent } from 'react';
 import { Trash2, Download, Upload, Save, Folder, Eraser } from 'lucide-react';
 import { toast } from 'sonner';
@@ -75,7 +76,7 @@ const WorldEditor = ({
   const handleImport = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json';
+    input.accept = '.world,.json';
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
@@ -83,11 +84,12 @@ const WorldEditor = ({
       const reader = new FileReader();
       reader.onload = (event) => {
         try {
-          const world = JSON.parse(event.target?.result as string);
+          const content = event.target?.result as string;
+          const world = parseWorldContent(content);
           onImportWorld(world);
           toast.success('World imported successfully!');
         } catch (error) {
-          toast.error('Failed to import world. Invalid JSON file.');
+          toast.error('Failed to import world. Invalid file format.');
         }
       };
       reader.readAsText(file);
@@ -218,7 +220,7 @@ const WorldEditor = ({
               size="sm"
               onClick={onExportWorld}
               className="gap-2"
-              aria-label="Export world to JSON file"
+              aria-label="Export world to .world file"
             >
               <Download className="h-3 w-3" />
               Export
@@ -228,7 +230,7 @@ const WorldEditor = ({
               size="sm"
               onClick={handleImport}
               className="gap-2"
-              aria-label="Import world from JSON file"
+              aria-label="Import world from .world or JSON file"
             >
               <Upload className="h-3 w-3" />
               Import

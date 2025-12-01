@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { createWorld, moveForward, turnLeft, turnRight, pickClover, placeClover } from './world';
+import {
+  createWorld,
+  moveForward,
+  turnLeft,
+  turnRight,
+  pickClover,
+  placeClover,
+  treeFront,
+  treeLeft,
+  treeRight,
+  mushroomFront,
+  onLeaf,
+} from './world';
 import { World, Direction, CellType } from './types';
 
 describe('World Model', () => {
@@ -542,6 +554,471 @@ describe('World Model', () => {
       world = placeClover(world);
       expect(world.character.inventory).toBe(0);
       expect(world.grid[1][3].type).toBe(CellType.Clover);
+    });
+  });
+
+  describe('Sensor Functions', () => {
+    describe('treeFront', () => {
+      it('should return true when tree is directly in front (facing North)', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[1][2] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeFront(world)).toBe(true);
+      });
+
+      it('should return true when tree is directly in front (facing East)', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[2][3] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.East,
+            inventory: 0,
+          },
+        };
+
+        expect(treeFront(world)).toBe(true);
+      });
+
+      it('should return false when no tree in front', () => {
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid: Array(5)
+            .fill(null)
+            .map(() =>
+              Array(5)
+                .fill(null)
+                .map(() => ({ type: CellType.Empty }))
+            ),
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeFront(world)).toBe(false);
+      });
+
+      it('should return true when facing boundary (out of bounds)', () => {
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid: Array(5)
+            .fill(null)
+            .map(() =>
+              Array(5)
+                .fill(null)
+                .map(() => ({ type: CellType.Empty }))
+            ),
+          character: {
+            position: { x: 2, y: 0 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeFront(world)).toBe(true);
+      });
+
+      it('should return false when mushroom is in front', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[1][2] = { type: CellType.Mushroom };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeFront(world)).toBe(false);
+      });
+    });
+
+    describe('treeLeft', () => {
+      it('should return true when tree is to the left (facing North)', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[2][1] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeLeft(world)).toBe(true);
+      });
+
+      it('should return true when tree is to the left (facing East)', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[1][2] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.East,
+            inventory: 0,
+          },
+        };
+
+        expect(treeLeft(world)).toBe(true);
+      });
+
+      it('should return false when no tree to the left', () => {
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid: Array(5)
+            .fill(null)
+            .map(() =>
+              Array(5)
+                .fill(null)
+                .map(() => ({ type: CellType.Empty }))
+            ),
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeLeft(world)).toBe(false);
+      });
+
+      it('should return true when left is out of bounds', () => {
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid: Array(5)
+            .fill(null)
+            .map(() =>
+              Array(5)
+                .fill(null)
+                .map(() => ({ type: CellType.Empty }))
+            ),
+          character: {
+            position: { x: 0, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeLeft(world)).toBe(true);
+      });
+    });
+
+    describe('treeRight', () => {
+      it('should return true when tree is to the right (facing North)', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[2][3] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeRight(world)).toBe(true);
+      });
+
+      it('should return true when tree is to the right (facing West)', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[1][2] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.West,
+            inventory: 0,
+          },
+        };
+
+        expect(treeRight(world)).toBe(true);
+      });
+
+      it('should return false when no tree to the right', () => {
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid: Array(5)
+            .fill(null)
+            .map(() =>
+              Array(5)
+                .fill(null)
+                .map(() => ({ type: CellType.Empty }))
+            ),
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeRight(world)).toBe(false);
+      });
+
+      it('should return true when right is out of bounds', () => {
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid: Array(5)
+            .fill(null)
+            .map(() =>
+              Array(5)
+                .fill(null)
+                .map(() => ({ type: CellType.Empty }))
+            ),
+          character: {
+            position: { x: 4, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(treeRight(world)).toBe(true);
+      });
+    });
+
+    describe('mushroomFront', () => {
+      it('should return true when mushroom is in front', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[1][2] = { type: CellType.Mushroom };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(mushroomFront(world)).toBe(true);
+      });
+
+      it('should return false when no mushroom in front', () => {
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid: Array(5)
+            .fill(null)
+            .map(() =>
+              Array(5)
+                .fill(null)
+                .map(() => ({ type: CellType.Empty }))
+            ),
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(mushroomFront(world)).toBe(false);
+      });
+
+      it('should return false when tree is in front', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[1][2] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(mushroomFront(world)).toBe(false);
+      });
+
+      it('should return false when out of bounds', () => {
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid: Array(5)
+            .fill(null)
+            .map(() =>
+              Array(5)
+                .fill(null)
+                .map(() => ({ type: CellType.Empty }))
+            ),
+          character: {
+            position: { x: 2, y: 0 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(mushroomFront(world)).toBe(false);
+      });
+    });
+
+    describe('onLeaf', () => {
+      it('should return true when standing on a clover', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[2][2] = { type: CellType.Clover };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(onLeaf(world)).toBe(true);
+      });
+
+      it('should return false when not on a clover', () => {
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid: Array(5)
+            .fill(null)
+            .map(() =>
+              Array(5)
+                .fill(null)
+                .map(() => ({ type: CellType.Empty }))
+            ),
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(onLeaf(world)).toBe(false);
+      });
+
+      it('should return false when standing on a tree', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[2][2] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        expect(onLeaf(world)).toBe(false);
+      });
     });
   });
 });

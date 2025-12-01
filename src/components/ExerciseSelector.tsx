@@ -6,13 +6,13 @@ import { scenarios } from '@/models/scenarios';
 import { getScenarioProgress } from '@/models/scenario';
 import { Lock, Star, Trophy } from 'lucide-react';
 
-interface LevelSelectorProps {
+interface ExerciseSelectorProps {
   currentScenarioId?: string;
   onSelectScenario: (scenarioId: string) => void;
   onClose: () => void;
 }
 
-const LevelSelector = ({ currentScenarioId, onSelectScenario, onClose }: LevelSelectorProps) => {
+const ExerciseSelector = ({ currentScenarioId, onSelectScenario, onClose }: ExerciseSelectorProps) => {
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
       case 'easy':
@@ -52,7 +52,7 @@ const LevelSelector = ({ currentScenarioId, onSelectScenario, onClose }: LevelSe
     <Card className="w-full max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold">Level Select</h2>
+          <h2 className="text-2xl font-bold">Exercise Select</h2>
           <p className="text-sm text-muted-foreground mt-1">Choose a challenge to solve</p>
         </div>
         <div className="flex items-center gap-2">
@@ -134,4 +134,4 @@ const LevelSelector = ({ currentScenarioId, onSelectScenario, onClose }: LevelSe
   );
 };
 
-export default LevelSelector;
+export default ExerciseSelector;

@@ -8,27 +8,27 @@ import {
 import { Button } from '@/components/ui/button';
 import { Trophy, Star, ArrowRight, RotateCcw } from 'lucide-react';
 
-interface LevelCompleteDialogProps {
+interface ExerciseCompleteDialogProps {
   isOpen: boolean;
-  levelTitle: string;
+  exerciseTitle: string;
   commandCount: number;
   stars: number;
-  onNextLevel: () => void;
+  onNextExercise: () => void;
   onRetry: () => void;
-  onLevelSelect: () => void;
-  hasNextLevel: boolean;
+  onExerciseSelect: () => void;
+  hasNextExercise: boolean;
 }
 
-const LevelCompleteDialog = ({
+const ExerciseCompleteDialog = ({
   isOpen,
-  levelTitle,
+  exerciseTitle,
   commandCount,
   stars,
-  onNextLevel,
+  onNextExercise,
   onRetry,
-  onLevelSelect,
-  hasNextLevel,
-}: LevelCompleteDialogProps) => {
+  onExerciseSelect,
+  hasNextExercise,
+}: ExerciseCompleteDialogProps) => {
   return (
     <Dialog open={isOpen}>
       <DialogContent className="sm:max-w-md">
@@ -38,8 +38,8 @@ const LevelCompleteDialog = ({
               <Trophy className="h-10 w-10 text-white" />
             </div>
           </div>
-          <DialogTitle className="text-center text-2xl">Level Complete! 🎉</DialogTitle>
-          <DialogDescription className="text-center text-base">{levelTitle}</DialogDescription>
+          <DialogTitle className="text-center text-2xl">Exercise Complete! 🎉</DialogTitle>
+          <DialogDescription className="text-center text-base">{exerciseTitle}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
@@ -74,9 +74,9 @@ const LevelCompleteDialog = ({
 
           {/* Actions */}
           <div className="space-y-2">
-            {hasNextLevel && (
-              <Button onClick={onNextLevel} size="lg" className="w-full gap-2">
-                Next Level
+            {hasNextExercise && (
+              <Button onClick={onNextExercise} size="lg" className="w-full gap-2">
+                Next Exercise
                 <ArrowRight className="h-4 w-4" />
               </Button>
             )}
@@ -85,8 +85,8 @@ const LevelCompleteDialog = ({
                 <RotateCcw className="h-4 w-4" />
                 Retry
               </Button>
-              <Button onClick={onLevelSelect} variant="outline" size="lg">
-                Level Select
+              <Button onClick={onExerciseSelect} variant="outline" size="lg">
+                Exercise Select
               </Button>
             </div>
           </div>
@@ -96,4 +96,4 @@ const LevelCompleteDialog = ({
   );
 };
 
-export default LevelCompleteDialog;
+export default ExerciseCompleteDialog;

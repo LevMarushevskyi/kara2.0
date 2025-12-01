@@ -1,43 +1,91 @@
 import { useState, useEffect, useCallback } from 'react';
-import { List, Keyboard, HelpCircle, Code2, Play, Pause, SkipForward, Square, FastForward } from 'lucide-react';
+import { List, Keyboard, HelpCircle, Code2, Play, Pause, SkipForward, Square, FastForward, Upload, Download, Settings, Sun, Moon, Monitor, Eye, EyeOff, Check, AlertTriangle } from 'lucide-react';
 import WorldView from '@/components/WorldView';
 import ProgramPanel from '@/components/ProgramPanel';
 import CommandPanel from '@/components/CommandPanel';
 import WorldEditor from '@/components/WorldEditor';
-import LevelSelector from '@/components/LevelSelector';
-import LevelCompleteDialog from '@/components/LevelCompleteDialog';
+import ExerciseSelector from '@/components/ExerciseSelector';
+import ExerciseCompleteDialog from '@/components/ExerciseCompleteDialog';
 import Tutorial from '@/components/Tutorial';
 import RepeatPatternDialog from '@/components/RepeatPatternDialog';
+import FSMEditor from '@/components/FSMEditor';
+import CodeEditor from '@/components/CodeEditor';
 import { moveForward, turnLeft, turnRight, pickClover, placeClover } from '@/models/world';
 import { World, CellType, Position } from '@/models/types';
 import { CommandType, repeatLastCommands } from '@/models/program';
+import {
+  FSMProgram,
+  createEmptyFSM,
+  downloadFSMAsKaraX,
+  parseFSMContent,
+  isValidFSMProgram,
+} from '@/models/fsm';
+import { executeFSMStep, validateFSMProgram } from '@/models/fsmExecutor';
 import { Scenario, saveProgress } from '@/models/scenario';
 import { scenarios, getScenarioById } from '@/models/scenarios';
 import {
-  downloadWorld,
+  downloadWorldAsKaraX,
   downloadProgram,
   getTemplateByName,
   isValidWorld,
+  createEmptyTemplate,
 } from '@/models/worldTemplates';
+import {
+  TextKaraLanguage,
+  downloadTextKaraCode,
+  getAcceptString,
+  saveCode,
+  loadCode,
+} from '@/models/textKara';
+import { validateTextKaraCode, parseTextKaraCommands, executeSingleCommand, CommandName } from '@/models/textKaraExecutor';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { useScreenReader } from '@/hooks/useScreenReader';
+import { useSettings, GridColorTheme, ViewMode } from '@/hooks/useSettings';
 import { Slider } from '@/components/ui/slider';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const Index = () => {
   const { announce } = useScreenReader();
+  const {
+    themeMode,
+    gridColorTheme,
+    viewMode,
+    setThemeMode,
+    setGridColorTheme,
+    setViewMode,
+  } = useSettings();
   const [currentScenario, setCurrentScenario] = useState<Scenario>(scenarios[0]);
 
   // Zoom baseline: 1.68 scale = 100% for 5x5 grid
   const BASELINE_ZOOM = 1.68;
   const BASELINE_GRID_SIZE = 5;
 
-  // Use undo/redo for world state management
+  // Use undo/redo for world state management - start with 9x9 blank world
   const {
     state: world,
     setState: setWorld,
@@ -46,32 +94,48 @@ const Index = () => {
     canUndo: canUndoWorld,
     canRedo: canRedoWorld,
     clearHistory: clearWorldHistory,
-  } = useUndoRedo<World>(scenarios[0].world);
+  } = useUndoRedo<World>(createEmptyTemplate(9, 9));
 
   const [program, setProgram] = useState<CommandType[]>([]);
   const [currentStep, setCurrentStep] = useState(-1);
   const [isRunning, setIsRunning] = useState(false);
   const [executionSpeed, setExecutionSpeed] = useState(500);
   const [selectedObject, setSelectedObject] = useState<CellType | null | 'KARA' | undefined>(undefined);
-  const [showLevelSelector, setShowLevelSelector] = useState(false);
-  const [showLevelComplete, setShowLevelComplete] = useState(false);
+  const [showExerciseSelector, setShowExerciseSelector] = useState(false);
+  const [showExerciseComplete, setShowExerciseComplete] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showRepeatDialog, setShowRepeatDialog] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
-  const [isTemplateMode, setIsTemplateMode] = useState(false);
+  const [isTemplateMode, setIsTemplateMode] = useState(true);
   const [activeTab, setActiveTab] = useState<'map' | 'program'>('map');
   const [zoom, setZoom] = useState(BASELINE_ZOOM);
-  const [pendingWidth, setPendingWidth] = useState(5);
-  const [pendingHeight, setPendingHeight] = useState(5);
+  const [pendingWidth, setPendingWidth] = useState(9);
+  const [pendingHeight, setPendingHeight] = useState(9);
   const [isResizingMap, setIsResizingMap] = useState(false);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [showInfoDialog, setShowInfoDialog] = useState(false);
-  const [levelCompleteData, setLevelCompleteData] = useState<{
+  const [exerciseCompleteData, setExerciseCompleteData] = useState<{
     stars: number;
     commandCount: number;
   }>({ stars: 0, commandCount: 0 });
+  const [programmingLanguage, setProgrammingLanguage] = useState<string>('Kara');
+  const [fsmProgram, setFsmProgram] = useState<FSMProgram>(createEmptyFSM());
+  const [fsmCurrentState, setFsmCurrentState] = useState<string | null>(null);
+  const [isFsmRunning, setIsFsmRunning] = useState(false);
+  const [fsmStepTrigger, setFsmStepTrigger] = useState(0); // Counter to trigger re-execution
+
+  // Text-based Kara code states (one for each language)
+  const [javaKaraCode, setJavaKaraCode] = useState<string>(() => loadCode('JavaKara'));
+  const [pythonKaraCode, setPythonKaraCode] = useState<string>(() => loadCode('PythonKara'));
+  const [jsKaraCode, setJsKaraCode] = useState<string>(() => loadCode('JavaScriptKara'));
+  const [rubyKaraCode, setRubyKaraCode] = useState<string>(() => loadCode('RubyKara'));
+
+  // Text-based code execution state
+  const [textKaraCommands, setTextKaraCommands] = useState<CommandName[]>([]);
+  const [textKaraStep, setTextKaraStep] = useState<number>(-1);
+  const [isTextKaraRunning, setIsTextKaraRunning] = useState(false);
 
   // Check if this is the user's first visit
   useEffect(() => {
@@ -103,6 +167,23 @@ const Index = () => {
     setPendingHeight(world.height);
   }, [world.width, world.height]);
 
+  // Set initial zoom to fit the grid on first load
+  useEffect(() => {
+    // Calculate fit zoom for the initial grid
+    const cellSize = 56; // w-14 = 56px
+    const padding = 64; // Grid padding and card padding
+    const containerWidth = 800; // Approximate container width
+    const containerHeight = 600; // Approximate container height
+
+    const gridWidth = world.width * cellSize + padding;
+    const gridHeight = world.height * cellSize + padding;
+    const zoomX = containerWidth / gridWidth;
+    const zoomY = containerHeight / gridHeight;
+    const fitZoom = Math.min(zoomX, zoomY) * 0.95;
+
+    setZoom(fitZoom);
+  }, []); // Only run on mount
+
   const loadScenario = useCallback(
     (scenarioId: string) => {
       const scenario = getScenarioById(scenarioId);
@@ -110,15 +191,15 @@ const Index = () => {
 
       setCurrentScenario(scenario);
       setWorld(JSON.parse(JSON.stringify(scenario.world))); // Deep copy
-      clearWorldHistory(); // Clear undo/redo history when loading a new level
+      clearWorldHistory(); // Clear undo/redo history when loading a new exercise
       setProgram([]);
       setCurrentStep(-1);
       setIsRunning(false);
-      setShowLevelComplete(false);
+      setShowExerciseComplete(false);
       setIsTemplateMode(false); // Loading a scenario, not a template
-      setSelectedObject(null); // Clear any selected object when loading a level
-      toast.success(`Level loaded: ${scenario.title}`);
-      announce(`Level loaded: ${scenario.title}`);
+      setSelectedObject(null); // Clear any selected object when loading an exercise
+      toast.success(`Exercise loaded: ${scenario.title}`);
+      announce(`Exercise loaded: ${scenario.title}`);
     },
     [clearWorldHistory, announce]
   );
@@ -134,15 +215,15 @@ const Index = () => {
 
       saveProgress(currentScenario.id, commandCount);
 
-      setLevelCompleteData({ stars, commandCount });
-      setShowLevelComplete(true);
+      setExerciseCompleteData({ stars, commandCount });
+      setShowExerciseComplete(true);
 
       // Confetti effect via toast
-      toast.success('🎉 Level Complete!', {
+      toast.success('🎉 Exercise Complete!', {
         description: `Solved in ${commandCount} commands!`,
       });
       announce(
-        `Level complete! Solved in ${commandCount} commands with ${stars} stars`,
+        `Exercise complete! Solved in ${commandCount} commands with ${stars} stars`,
         'assertive'
       );
     }
@@ -220,6 +301,63 @@ const Index = () => {
   }, []);
 
   const handleRun = () => {
+    // Check if we're in FSM mode
+    if (programmingLanguage === 'Kara') {
+      const validation = validateFSMProgram(fsmProgram);
+      if (!validation.valid) {
+        toast.error(validation.error || 'FSM program is not valid');
+        announce(`Cannot run: ${validation.error}`, 'assertive');
+        return;
+      }
+      setIsFsmRunning(true);
+      setFsmCurrentState(fsmProgram.startStateId);
+      setFsmStepTrigger(0); // Reset trigger counter for new run
+      toast.success('FSM program started!');
+      announce('FSM program started');
+      return;
+    }
+
+    // Check if we're in text-based language mode
+    if (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage)) {
+      const lang = programmingLanguage as TextKaraLanguage;
+      const code = lang === 'JavaKara' ? javaKaraCode :
+                   lang === 'PythonKara' ? pythonKaraCode :
+                   lang === 'JavaScriptKara' ? jsKaraCode :
+                   rubyKaraCode;
+
+      // Validate the code first
+      const validation = validateTextKaraCode(code, lang);
+      if (!validation.valid) {
+        toast.error(validation.error || 'Code is not valid');
+        announce(`Cannot run: ${validation.error}`, 'assertive');
+        return;
+      }
+
+      // Parse the code into commands for step-by-step execution
+      const parseResult = parseTextKaraCommands(code, lang, world);
+
+      if (parseResult.error) {
+        toast.error(parseResult.error);
+        announce(`Parse error: ${parseResult.error}`, 'assertive');
+        return;
+      }
+
+      if (parseResult.commands.length === 0) {
+        toast.info('No commands to execute');
+        announce('No commands to execute');
+        return;
+      }
+
+      // Start step-by-step execution
+      setTextKaraCommands(parseResult.commands);
+      setTextKaraStep(0);
+      setIsTextKaraRunning(true);
+      toast.success(`Code started! (${parseResult.commands.length} commands)`);
+      announce(`Code started with ${parseResult.commands.length} commands`);
+      return;
+    }
+
+    // Regular command-based program
     if (program.length === 0) {
       toast.error('Program is empty!');
       announce('Cannot run: Program is empty', 'assertive');
@@ -233,6 +371,8 @@ const Index = () => {
 
   const handlePause = () => {
     setIsRunning(false);
+    setIsFsmRunning(false);
+    setIsTextKaraRunning(false);
     toast.info('Program paused');
     announce('Program paused');
   };
@@ -257,9 +397,9 @@ const Index = () => {
 
   const handleAddCommand = (command: CommandType) => {
     // In template mode, allow all commands
-    // In scenario mode, only allow commands specified by the level
+    // In scenario mode, only allow commands specified by the exercise
     if (!isTemplateMode && !currentScenario.allowedCommands.includes(command)) {
-      toast.error('This command is not allowed in this level!');
+      toast.error('This command is not allowed in this exercise!');
       return;
     }
     setProgram([...program, command]);
@@ -276,7 +416,8 @@ const Index = () => {
     toast.info('Program cleared');
   };
 
-  const handleCellClick = (position: Position) => {
+  // isDragPaint: true when drag-painting (just place, don't toggle), false on initial click (toggle)
+  const handleCellClick = (position: Position, isDragPaint: boolean = false) => {
     setWorld((prevWorld) => {
       const isKaraPosition =
         position.x === prevWorld.character.position.x &&
@@ -284,8 +425,8 @@ const Index = () => {
 
       // Handle Kara placement/removal
       if (selectedObject === 'KARA') {
-        // If clicking on Kara with Kara selected, remove her
-        if (isKaraPosition) {
+        // If clicking on Kara with Kara selected, remove her (only on initial click, not drag)
+        if (isKaraPosition && !isDragPaint) {
           toast.success('Kara removed from world!');
           return {
             ...prevWorld,
@@ -295,8 +436,14 @@ const Index = () => {
             },
           };
         }
+        // If dragging over Kara's position, skip
+        if (isKaraPosition && isDragPaint) {
+          return prevWorld;
+        }
         // Otherwise, move Kara to new position
-        toast.success('Kara moved to new position!');
+        if (!isDragPaint) {
+          toast.success('Kara moved to new position!');
+        }
         return {
           ...prevWorld,
           character: {
@@ -311,8 +458,8 @@ const Index = () => {
         const newGrid = prevWorld.grid.map((row) => [...row]);
         newGrid[position.y][position.x] = { type: CellType.Empty };
 
-        // If erasing on Kara's position, remove her too
-        if (isKaraPosition) {
+        // If erasing on Kara's position, remove her too (only on initial click)
+        if (isKaraPosition && !isDragPaint) {
           toast.success('Kara removed from world!');
           return {
             ...prevWorld,
@@ -331,20 +478,29 @@ const Index = () => {
       const newGrid = prevWorld.grid.map((row) => [...row]);
 
       // Don't place on character position
-      if (
-        position.x === prevWorld.character.position.x &&
-        position.y === prevWorld.character.position.y
-      ) {
-        toast.error('Cannot place object on character!');
+      if (isKaraPosition) {
+        if (!isDragPaint) {
+          toast.error('Cannot place object on character!');
+        }
         return prevWorld;
       }
 
-      // Toggle: if the cell already has the same element, remove it
       const currentCell = newGrid[position.y][position.x];
-      if (currentCell.type === selectedObject) {
-        newGrid[position.y][position.x] = { type: CellType.Empty };
+
+      // On initial click: toggle (place if empty/different, remove if same)
+      // On drag paint: only place if cell is empty or different (don't remove same elements)
+      if (isDragPaint) {
+        // During drag: only place if cell doesn't already have the selected object
+        if (currentCell.type !== selectedObject) {
+          newGrid[position.y][position.x] = { type: selectedObject };
+        }
       } else {
-        newGrid[position.y][position.x] = { type: selectedObject };
+        // Initial click: toggle behavior
+        if (currentCell.type === selectedObject) {
+          newGrid[position.y][position.x] = { type: CellType.Empty };
+        } else {
+          newGrid[position.y][position.x] = { type: selectedObject };
+        }
       }
 
       return { ...prevWorld, grid: newGrid };
@@ -405,10 +561,12 @@ const Index = () => {
   };
 
   const handleReset = () => {
+    setIsFsmRunning(false);
+    setFsmCurrentState(null);
     loadScenario(currentScenario.id);
   };
 
-  const handleNextLevel = () => {
+  const handleNextExercise = () => {
     const currentIndex = scenarios.findIndex((s) => s.id === currentScenario.id);
     if (currentIndex < scenarios.length - 1) {
       loadScenario(scenarios[currentIndex + 1].id);
@@ -416,7 +574,7 @@ const Index = () => {
   };
 
   const handleRetry = () => {
-    setShowLevelComplete(false);
+    setShowExerciseComplete(false);
     handleReset();
   };
 
@@ -428,7 +586,7 @@ const Index = () => {
   };
 
   const handleExportWorld = () => {
-    downloadWorld(world, `kara-world-${currentScenario.id}.json`);
+    downloadWorldAsKaraX(world, `kara-world-${currentScenario.id}.world`);
     toast.success('World exported successfully!');
   };
 
@@ -536,6 +694,83 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning, currentStep, program, executionSpeed]);
 
+  // FSM Auto-execution
+  useEffect(() => {
+    if (!isFsmRunning || !fsmCurrentState) return;
+
+    // Execute one FSM step
+    const result = executeFSMStep(world, fsmProgram, fsmCurrentState);
+
+    // Update the world
+    setWorld(result.world);
+
+    // Check if we hit an error
+    if (result.error) {
+      setIsFsmRunning(false);
+      setFsmCurrentState(null);
+      toast.error(result.error);
+      announce(`FSM error: ${result.error}`, 'assertive');
+      return;
+    }
+
+    // Check if we've stopped
+    if (result.stopped) {
+      setIsFsmRunning(false);
+      setFsmCurrentState(null);
+      toast.success('FSM program completed!');
+      announce('FSM program completed');
+      return;
+    }
+
+    // Schedule the next step
+    const timer = setTimeout(() => {
+      setFsmCurrentState(result.nextStateId);
+      setFsmStepTrigger(prev => prev + 1); // Increment to trigger re-execution even for self-loops
+    }, executionSpeed);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFsmRunning, fsmCurrentState, fsmStepTrigger, executionSpeed]);
+
+  // Text-based code auto-execution
+  useEffect(() => {
+    if (!isTextKaraRunning || textKaraStep < 0 || textKaraStep >= textKaraCommands.length) return;
+
+    // Execute the current command
+    const command = textKaraCommands[textKaraStep];
+    const result = executeSingleCommand(command, world);
+
+    // Update the world
+    setWorld(result.world);
+
+    // Check if we hit an error
+    if (result.error) {
+      setIsTextKaraRunning(false);
+      setTextKaraStep(-1);
+      setTextKaraCommands([]);
+      toast.error(result.error);
+      announce(`Execution error: ${result.error}`, 'assertive');
+      return;
+    }
+
+    // Schedule the next step
+    const timer = setTimeout(() => {
+      if (textKaraStep >= textKaraCommands.length - 1) {
+        // Completed
+        setIsTextKaraRunning(false);
+        setTextKaraStep(-1);
+        setTextKaraCommands([]);
+        toast.success('Code executed successfully!');
+        announce('Code executed successfully');
+      } else {
+        setTextKaraStep(textKaraStep + 1);
+      }
+    }, executionSpeed);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTextKaraRunning, textKaraStep, textKaraCommands, executionSpeed]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       {/* Skip to main content link for keyboard navigation */}
@@ -563,22 +798,12 @@ const Index = () => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowTutorial(true)}
+                onClick={() => setShowExerciseSelector(true)}
                 className="gap-2"
-                aria-label="Open tutorial and help"
-              >
-                <HelpCircle className="h-4 w-4" />
-                Help
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowLevelSelector(true)}
-                className="gap-2"
-                aria-label="Select level to play"
+                aria-label="Select exercise to play"
               >
                 <List className="h-4 w-4" />
-                Levels
+                Exercises
               </Button>
               <Button
                 variant={isTemplateMode ? 'default' : 'outline'}
@@ -591,27 +816,110 @@ const Index = () => {
                 <Code2 className="h-4 w-4" />
                 Sandbox
               </Button>
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground" id="speed-label">
-                  Execution Speed
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs">Slow</span>
-                  <Slider
-                    value={[1000 - executionSpeed]}
-                    onValueChange={(value) => setExecutionSpeed(1000 - value[0])}
-                    min={200}
-                    max={900}
-                    step={100}
-                    className="w-32"
-                    aria-labelledby="speed-label"
-                    aria-valuemin={200}
-                    aria-valuemax={900}
-                    aria-valuenow={1000 - executionSpeed}
-                  />
-                  <span className="text-xs">Fast</span>
-                </div>
-              </div>
+
+              {/* Info Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowInfoDialog(true)}
+                aria-label="Show information"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+
+              {/* Settings Menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" aria-label="Settings">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {/* Theme Mode */}
+                  <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      {themeMode === 'light' ? (
+                        <Sun className="mr-2 h-4 w-4" />
+                      ) : themeMode === 'dark' ? (
+                        <Moon className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Monitor className="mr-2 h-4 w-4" />
+                      )}
+                      <span>Theme</span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuRadioGroup value={themeMode} onValueChange={(v) => setThemeMode(v as 'light' | 'dark' | 'system')}>
+                        <DropdownMenuRadioItem value="light">
+                          <Sun className="mr-2 h-4 w-4" />
+                          Light
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="dark">
+                          <Moon className="mr-2 h-4 w-4" />
+                          Dark
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="system">
+                          <Monitor className="mr-2 h-4 w-4" />
+                          System
+                        </DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+
+                  {/* Grid Color Theme */}
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <span
+                        className={`mr-2 h-4 w-4 rounded border ${
+                          gridColorTheme === 'green' ? 'bg-green-400' :
+                          gridColorTheme === 'blue' ? 'bg-sky-400' :
+                          gridColorTheme === 'white' ? 'bg-gray-100' :
+                          'bg-gray-700'
+                        }`}
+                      />
+                      <span>Grid Color</span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuRadioGroup value={gridColorTheme} onValueChange={(v) => setGridColorTheme(v as GridColorTheme)}>
+                        <DropdownMenuRadioItem value="green">
+                          <span className="mr-2 h-4 w-4 rounded bg-green-400 border" />
+                          Green
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="blue">
+                          <span className="mr-2 h-4 w-4 rounded bg-sky-400 border" />
+                          Baby Blue
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="white">
+                          <span className="mr-2 h-4 w-4 rounded bg-gray-100 border" />
+                          White
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="dark">
+                          <span className="mr-2 h-4 w-4 rounded bg-gray-700 border" />
+                          Dark
+                        </DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+
+                  <DropdownMenuSeparator />
+
+                  {/* View Mode */}
+                  <DropdownMenuLabel>View</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+                    <DropdownMenuRadioItem value="normal">
+                      <Eye className="mr-2 h-4 w-4" />
+                      Normal View
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="transparency">
+                      <EyeOff className="mr-2 h-4 w-4" />
+                      Kara's Vision
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        Invisible items fade
+                      </span>
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </nav>
         </div>
@@ -621,7 +929,7 @@ const Index = () => {
       <main id="main-content" className="container mx-auto px-6 py-6" role="main">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'map' | 'program')} className="h-[calc(100vh-140px)]">
           <TabsList className="mb-4">
-            <TabsTrigger value="map">Map</TabsTrigger>
+            <TabsTrigger value="map">World</TabsTrigger>
             <TabsTrigger value="program">Program</TabsTrigger>
           </TabsList>
 
@@ -656,13 +964,13 @@ const Index = () => {
                   onExecuteCommand={executeCommand}
                 />
 
-                {/* Map Size Controls */}
+                {/* World Size Controls */}
                 <Card className="p-4">
                   <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
                     <span className="h-6 w-6 rounded bg-primary/10 flex items-center justify-center text-xs">
                       📐
                     </span>
-                    Map Size
+                    World Size
                   </h3>
                   <div className="space-y-3">
                     <div>
@@ -679,7 +987,7 @@ const Index = () => {
                           setPendingWidth(newWidth);
                         }}
                         disabled={isResizingMap}
-                        className="w-full px-2 py-1 text-sm border rounded disabled:opacity-50"
+                        className="w-full px-2 py-1 text-sm border rounded disabled:opacity-50 bg-background text-foreground border-input"
                       />
                     </div>
                     <div>
@@ -696,7 +1004,7 @@ const Index = () => {
                           setPendingHeight(newHeight);
                         }}
                         disabled={isResizingMap}
-                        className="w-full px-2 py-1 text-sm border rounded disabled:opacity-50"
+                        className="w-full px-2 py-1 text-sm border rounded disabled:opacity-50 bg-background text-foreground border-input"
                       />
                     </div>
                     <Button
@@ -721,7 +1029,7 @@ const Index = () => {
                           // Small delay to ensure smooth rendering
                           setTimeout(() => {
                             setIsResizingMap(false);
-                            toast.success(`Map resized to ${pendingWidth}x${pendingHeight}`);
+                            toast.success(`World resized to ${pendingWidth}x${pendingHeight}`);
                           }, 100);
                         }, 50);
                       }}
@@ -793,6 +1101,31 @@ const Index = () => {
                     </div>
                   </div>
                 </Card>
+
+                {/* Execution Speed - shown in sandbox mode (left panel) */}
+                {isTemplateMode && (
+                  <Card className="p-4">
+                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" id="speed-label-left">
+                      <span className="h-6 w-6 rounded bg-primary/10 flex items-center justify-center text-xs">
+                        ⚡
+                      </span>
+                      Execution Speed
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Slow</span>
+                      <Slider
+                        value={[1000 - executionSpeed]}
+                        onValueChange={(value) => setExecutionSpeed(1000 - value[0])}
+                        min={200}
+                        max={900}
+                        step={100}
+                        className="flex-1"
+                        aria-labelledby="speed-label-left"
+                      />
+                      <span className="text-xs text-muted-foreground">Fast</span>
+                    </div>
+                  </Card>
+                )}
               </aside>
 
               {/* Center - World View */}
@@ -804,13 +1137,34 @@ const Index = () => {
                   // Always zoom when scrolling over the map grid
                   e.preventDefault();
                   const delta = e.deltaY;
+
+                  // Get the mouse position relative to the container
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const mouseX = e.clientX - rect.left;
+                  const mouseY = e.clientY - rect.top;
+
+                  // Calculate the position relative to the center
+                  const centerX = rect.width / 2;
+                  const centerY = rect.height / 2;
+                  const offsetX = mouseX - centerX;
+                  const offsetY = mouseY - centerY;
+
                   setZoom((prev) => {
                     const newZoom = prev * (delta > 0 ? 0.9 : 1.1);
-                    return Math.max(0.1, Math.min(5, newZoom));
+                    const clampedZoom = Math.max(0.1, Math.min(5, newZoom));
+
+                    // Adjust pan offset to zoom towards cursor
+                    const zoomFactor = clampedZoom / prev;
+                    setPanOffset((prevOffset) => ({
+                      x: prevOffset.x - (offsetX * (zoomFactor - 1)) / prev,
+                      y: prevOffset.y - (offsetY * (zoomFactor - 1)) / prev,
+                    }));
+
+                    return clampedZoom;
                   });
                 }}
                 onMouseDown={(e) => {
-                  // Enable panning in level mode, or in template mode when no tool is selected
+                  // Enable panning in exercise mode, or in template mode when no tool is selected
                   if (!isTemplateMode || selectedObject === undefined) {
                     setIsPanning(true);
                     setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
@@ -855,6 +1209,8 @@ const Index = () => {
                     onCellClick={isTemplateMode ? handleCellClick : undefined}
                     onCellDrop={isTemplateMode ? handleCellDrop : undefined}
                     selectedObject={isTemplateMode ? selectedObject : undefined}
+                    gridColorTheme={gridColorTheme}
+                    viewMode={viewMode}
                   />
                 </div>
               </div>
@@ -907,14 +1263,23 @@ const Index = () => {
                   </h3>
                   <div className="grid grid-cols-2 gap-2 mb-2" role="group" aria-labelledby="execution-heading">
                     <Button
-                      onClick={isRunning ? handlePause : handleRun}
-                      disabled={program.length === 0}
+                      onClick={isRunning || isFsmRunning || isTextKaraRunning ? handlePause : handleRun}
+                      disabled={
+                        programmingLanguage === 'Kara' ? !fsmProgram.startStateId :
+                        ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) ? (
+                          (programmingLanguage === 'JavaKara' && !javaKaraCode.trim()) ||
+                          (programmingLanguage === 'PythonKara' && !pythonKaraCode.trim()) ||
+                          (programmingLanguage === 'JavaScriptKara' && !jsKaraCode.trim()) ||
+                          (programmingLanguage === 'RubyKara' && !rubyKaraCode.trim())
+                        ) :
+                        program.length === 0
+                      }
                       size="sm"
-                      variant={isRunning ? 'destructive' : 'default'}
+                      variant={isRunning || isFsmRunning || isTextKaraRunning ? 'destructive' : 'default'}
                       className="gap-1"
-                      aria-label={isRunning ? 'Pause program execution' : 'Run program'}
+                      aria-label={isRunning || isFsmRunning || isTextKaraRunning ? 'Pause program execution' : 'Run program'}
                     >
-                      {isRunning ? (
+                      {isRunning || isFsmRunning || isTextKaraRunning ? (
                         <>
                           <Pause className="h-3 w-3" />
                           Pause
@@ -928,7 +1293,7 @@ const Index = () => {
                     </Button>
                     <Button
                       onClick={handleStep}
-                      disabled={program.length === 0 || isRunning}
+                      disabled={programmingLanguage === 'Kara' || ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) || program.length === 0 || isRunning}
                       size="sm"
                       variant="secondary"
                       className="gap-1"
@@ -943,9 +1308,14 @@ const Index = () => {
                       onClick={() => {
                         setCurrentStep(-1);
                         setIsRunning(false);
+                        setIsFsmRunning(false);
+                        setFsmCurrentState(null);
+                        setIsTextKaraRunning(false);
+                        setTextKaraStep(-1);
+                        setTextKaraCommands([]);
                         toast.info('Execution ended');
                       }}
-                      disabled={currentStep === -1 && !isRunning}
+                      disabled={currentStep === -1 && !isRunning && !isFsmRunning && !isTextKaraRunning}
                       size="sm"
                       variant="outline"
                       className="gap-1"
@@ -983,7 +1353,7 @@ const Index = () => {
                         setCurrentStep(-1);
                         toast.success('Skipped to end');
                       }}
-                      disabled={program.length === 0 || currentStep >= program.length - 1}
+                      disabled={programmingLanguage === 'Kara' || ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) || program.length === 0 || currentStep >= program.length - 1}
                       size="sm"
                       variant="outline"
                       className="gap-1"
@@ -995,127 +1365,267 @@ const Index = () => {
                   </div>
                 </Card>
 
-                {/* Info Button */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowInfoDialog(true)}
-                  className="w-full gap-2"
-                  aria-label="Show information"
-                >
-                  <HelpCircle className="h-4 w-4" />
-                  Information
-                </Button>
+                {/* Execution Speed - shown in exercise mode (right panel) */}
+                {!isTemplateMode && (
+                  <Card className="p-4">
+                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" id="speed-label-right">
+                      <span className="h-6 w-6 rounded bg-primary/10 flex items-center justify-center text-xs">
+                        ⚡
+                      </span>
+                      Execution Speed
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Slow</span>
+                      <Slider
+                        value={[1000 - executionSpeed]}
+                        onValueChange={(value) => setExecutionSpeed(1000 - value[0])}
+                        min={200}
+                        max={900}
+                        step={100}
+                        className="flex-1"
+                        aria-labelledby="speed-label-right"
+                      />
+                      <span className="text-xs text-muted-foreground">Fast</span>
+                    </div>
+                  </Card>
+                )}
               </aside>
             </div>
           </TabsContent>
 
           <TabsContent value="program" className="h-[calc(100%-60px)] mt-0">
-            <div className="grid grid-cols-[280px,1fr] gap-6 h-full">
-              {/* Left Panel - Program Builder */}
-              <aside
-                aria-label="Program builder panel"
-                className="animate-in fade-in slide-in-from-left duration-500"
-              >
-                <ProgramPanel
-                  program={program}
-                  currentStep={currentStep}
-                  isRunning={isRunning}
-                  onAddCommand={handleAddCommand}
-                  onRemoveCommand={handleRemoveCommand}
-                  onClearProgram={handleClearProgram}
-                  onRun={handleRun}
-                  onPause={handlePause}
-                  onStep={handleStep}
-                  onRepeatPattern={() => setShowRepeatDialog(true)}
-                />
-              </aside>
+            <div className="flex flex-col h-full gap-4">
+              {/* Top Panels */}
+              <div className="flex justify-end gap-4 px-4 pt-4">
+                {/* File Operations Panel */}
+                <Card className="p-3">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        // Accept appropriate files based on language
+                        if (programmingLanguage === 'Kara') {
+                          input.accept = '.kara,.json';
+                        } else if (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage)) {
+                          input.accept = getAcceptString(programmingLanguage as TextKaraLanguage);
+                        } else {
+                          input.accept = '.json,.txt';
+                        }
+                        input.onchange = (e) => {
+                          const file = (e.target as HTMLInputElement).files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            try {
+                              const content = event.target?.result as string;
+                              if (programmingLanguage === 'Kara') {
+                                // Parse FSM program from .kara or JSON
+                                const importedProgram = parseFSMContent(content);
+                                if (isValidFSMProgram(importedProgram)) {
+                                  setFsmProgram(importedProgram);
+                                  toast.success('FSM program uploaded successfully!');
+                                } else {
+                                  toast.error('Invalid FSM program file!');
+                                }
+                              } else if (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage)) {
+                                // Load text-based code
+                                const lang = programmingLanguage as TextKaraLanguage;
+                                if (lang === 'JavaKara') {
+                                  setJavaKaraCode(content);
+                                  saveCode('JavaKara', content);
+                                } else if (lang === 'PythonKara') {
+                                  setPythonKaraCode(content);
+                                  saveCode('PythonKara', content);
+                                } else if (lang === 'JavaScriptKara') {
+                                  setJsKaraCode(content);
+                                  saveCode('JavaScriptKara', content);
+                                } else if (lang === 'RubyKara') {
+                                  setRubyKaraCode(content);
+                                  saveCode('RubyKara', content);
+                                }
+                                toast.success('Code uploaded successfully!');
+                              } else {
+                                toast.success('Program uploaded successfully!');
+                              }
+                            } catch (error) {
+                              toast.error('Failed to upload program. Invalid file format.');
+                            }
+                          };
+                          reader.readAsText(file);
+                        };
+                        input.click();
+                      }}
+                      className="gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Upload
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (programmingLanguage === 'Kara') {
+                          // Export FSM program as .kara file
+                          downloadFSMAsKaraX(fsmProgram, 'kara-fsm-program.kara');
+                          toast.success('FSM program downloaded!');
+                        } else if (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage)) {
+                          // Export text-based code
+                          const lang = programmingLanguage as TextKaraLanguage;
+                          const code = lang === 'JavaKara' ? javaKaraCode :
+                                       lang === 'PythonKara' ? pythonKaraCode :
+                                       lang === 'JavaScriptKara' ? jsKaraCode :
+                                       rubyKaraCode;
+                          downloadTextKaraCode(code, lang);
+                          toast.success('Code downloaded!');
+                        } else {
+                          // Export regular program as JSON
+                          const programData = JSON.stringify(program, null, 2);
+                          const blob = new Blob([programData], { type: 'application/json' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `kara-program-${programmingLanguage.toLowerCase()}.json`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                          toast.success('Program downloaded!');
+                        }
+                      }}
+                      className="gap-2"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download
+                    </Button>
+                  </div>
+                </Card>
 
-              {/* Right - World View */}
-              <div
-                className="flex flex-col items-center justify-center animate-in fade-in zoom-in duration-700 overflow-auto relative"
-                role="region"
-                aria-label="World view"
-                onWheel={(e) => {
-                  if (e.ctrlKey || e.metaKey) {
-                    e.preventDefault();
-                    const delta = e.deltaY;
-                    setZoom((prev) => {
-                      const newZoom = prev * (delta > 0 ? 0.9 : 1.1);
-                      return Math.max(0.1, Math.min(5, newZoom));
-                    });
-                  }
-                }}
-                onMouseDown={(e) => {
-                  setIsPanning(true);
-                  setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
-                }}
-                onMouseMove={(e) => {
-                  if (isPanning) {
-                    setPanOffset({
-                      x: e.clientX - panStart.x,
-                      y: e.clientY - panStart.y,
-                    });
-                  }
-                }}
-                onMouseUp={() => {
-                  setIsPanning(false);
-                }}
-                onMouseLeave={() => {
-                  setIsPanning(false);
-                }}
-                style={{
-                  cursor: isResizingMap ? 'wait' : isPanning ? 'grabbing' : 'grab',
-                }}
-              >
-                {isResizingMap && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                      <p className="text-sm font-medium">Resizing map...</p>
-                    </div>
+                {/* Programming Language Selector */}
+                <Card className="p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Language:</span>
+                    <Select value={programmingLanguage} onValueChange={setProgrammingLanguage}>
+                      <SelectTrigger className="w-[180px] h-9">
+                        <SelectValue placeholder="Select language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Kara">Kara</SelectItem>
+                        <SelectItem value="JavaKara">JavaKara</SelectItem>
+                        <SelectItem value="PythonKara">PythonKara</SelectItem>
+                        <SelectItem value="JavaScriptKara">JavaScriptKara</SelectItem>
+                        <SelectItem value="RubyKara">RubyKara</SelectItem>
+                        <SelectItem value="ScratchKara">ScratchKara</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Program Builder - Centered */}
+              <div className="flex-1 flex items-center justify-center overflow-auto px-4 pb-4">
+                {programmingLanguage === 'Kara' ? (
+                  <div
+                    aria-label="FSM programming editor"
+                    className="w-full h-full max-w-6xl animate-in fade-in slide-in-from-bottom duration-500"
+                  >
+                    <FSMEditor program={fsmProgram} onUpdateProgram={setFsmProgram} />
+                  </div>
+                ) : ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) ? (
+                  <div
+                    aria-label={`${programmingLanguage} code editor`}
+                    className="w-full h-full max-w-6xl animate-in fade-in slide-in-from-bottom duration-500 flex flex-col gap-2"
+                  >
+                    {['PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) && (
+                      <Alert className="py-2 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+                        <AlertDescription className="text-amber-700 dark:text-amber-400 text-sm">
+                          {programmingLanguage} is still in development. You may encounter errors while using this feature.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    <CodeEditor
+                      code={
+                        programmingLanguage === 'JavaKara' ? javaKaraCode :
+                        programmingLanguage === 'PythonKara' ? pythonKaraCode :
+                        programmingLanguage === 'JavaScriptKara' ? jsKaraCode :
+                        rubyKaraCode
+                      }
+                      language={programmingLanguage as TextKaraLanguage}
+                      onChange={(newCode) => {
+                        if (programmingLanguage === 'JavaKara') {
+                          setJavaKaraCode(newCode);
+                          saveCode('JavaKara', newCode);
+                        } else if (programmingLanguage === 'PythonKara') {
+                          setPythonKaraCode(newCode);
+                          saveCode('PythonKara', newCode);
+                        } else if (programmingLanguage === 'JavaScriptKara') {
+                          setJsKaraCode(newCode);
+                          saveCode('JavaScriptKara', newCode);
+                        } else if (programmingLanguage === 'RubyKara') {
+                          setRubyKaraCode(newCode);
+                          saveCode('RubyKara', newCode);
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    aria-label="Program builder panel"
+                    className="w-full max-w-md animate-in fade-in slide-in-from-bottom duration-500 flex flex-col gap-2"
+                  >
+                    {programmingLanguage === 'ScratchKara' && (
+                      <Alert className="py-2 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500" />
+                        <AlertDescription className="text-amber-700 dark:text-amber-400 text-sm">
+                          ScratchKara is still in development. You may encounter errors while using this feature.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    <ProgramPanel
+                      program={program}
+                      currentStep={currentStep}
+                      isRunning={isRunning}
+                      onAddCommand={handleAddCommand}
+                      onRemoveCommand={handleRemoveCommand}
+                      onClearProgram={handleClearProgram}
+                      onRun={handleRun}
+                      onPause={handlePause}
+                      onStep={handleStep}
+                      onRepeatPattern={() => setShowRepeatDialog(true)}
+                    />
                   </div>
                 )}
-                <div style={{
-                  transform: `scale(${zoom}) translate(${panOffset.x}px, ${panOffset.y}px)`,
-                  transformOrigin: 'center',
-                  transition: isPanning ? 'none' : 'transform 0.1s',
-                  willChange: isPanning ? 'transform' : 'auto',
-                  backfaceVisibility: 'hidden',
-                  WebkitBackfaceVisibility: 'hidden',
-                }}>
-                  <WorldView world={world} />
-                </div>
               </div>
             </div>
           </TabsContent>
         </Tabs>
       </main>
 
-      {/* Level Selector Dialog */}
-      <Dialog open={showLevelSelector} onOpenChange={setShowLevelSelector}>
+      {/* Exercise Selector Dialog */}
+      <Dialog open={showExerciseSelector} onOpenChange={setShowExerciseSelector}>
         <DialogContent className="max-w-4xl max-h-[80vh]">
-          <LevelSelector
+          <ExerciseSelector
             currentScenarioId={currentScenario.id}
             onSelectScenario={loadScenario}
-            onClose={() => setShowLevelSelector(false)}
+            onClose={() => setShowExerciseSelector(false)}
           />
         </DialogContent>
       </Dialog>
 
-      {/* Level Complete Dialog */}
-      <LevelCompleteDialog
-        isOpen={showLevelComplete}
-        levelTitle={currentScenario.title}
-        commandCount={levelCompleteData.commandCount}
-        stars={levelCompleteData.stars}
-        onNextLevel={handleNextLevel}
+      {/* Exercise Complete Dialog */}
+      <ExerciseCompleteDialog
+        isOpen={showExerciseComplete}
+        exerciseTitle={currentScenario.title}
+        commandCount={exerciseCompleteData.commandCount}
+        stars={exerciseCompleteData.stars}
+        onNextExercise={handleNextExercise}
         onRetry={handleRetry}
-        onLevelSelect={() => {
-          setShowLevelComplete(false);
-          setShowLevelSelector(true);
+        onExerciseSelect={() => {
+          setShowExerciseComplete(false);
+          setShowExerciseSelector(true);
         }}
-        hasNextLevel={
+        hasNextExercise={
           scenarios.findIndex((s) => s.id === currentScenario.id) < scenarios.length - 1
         }
       />
@@ -1141,10 +1651,10 @@ const Index = () => {
           <div className="space-y-4">
             <h2 className="text-xl font-bold">Information</h2>
 
-            {/* Level/Template Info */}
+            {/* Exercise/Template Info */}
             <Card className="p-4">
               <h3 className="text-sm font-semibold mb-3">
-                {isTemplateMode ? 'Template Info' : 'Level Info'}
+                {isTemplateMode ? 'Template Info' : 'Exercise Info'}
               </h3>
               <div className="space-y-2 text-xs">
                 {isTemplateMode ? (
@@ -1210,6 +1720,19 @@ const Index = () => {
                 </div>
               </div>
             </Card>
+
+            {/* Tutorial Button */}
+            <Button
+              onClick={() => {
+                setShowInfoDialog(false);
+                setShowTutorial(true);
+              }}
+              className="w-full gap-2"
+              size="lg"
+            >
+              <HelpCircle className="h-4 w-4" />
+              Open Tutorial
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -7,9 +7,6 @@ import {
   RotateCcw,
   RotateCw,
   Trash2,
-  Play,
-  Pause,
-  SkipForward,
   Repeat,
 } from 'lucide-react';
 import { DragEvent } from 'react';
@@ -60,13 +57,9 @@ const getCommandLabel = (type: CommandType) => {
 const ProgramPanel = ({
   program,
   currentStep,
-  isRunning,
   onAddCommand,
   onRemoveCommand,
   onClearProgram,
-  onRun,
-  onPause,
-  onStep,
   onRepeatPattern,
 }: ProgramPanelProps) => {
   const handleDragStart = (e: DragEvent<HTMLDivElement>, command: CommandType) => {
@@ -209,46 +202,6 @@ const ProgramPanel = ({
             )}
           </div>
         </ScrollArea>
-      </Card>
-
-      {/* Execution Controls */}
-      <Card className="p-4">
-        <h3 className="text-sm font-semibold mb-3" id="execution-heading">
-          Execution
-        </h3>
-        <div className="grid grid-cols-3 gap-2" role="group" aria-labelledby="execution-heading">
-          <Button
-            onClick={isRunning ? onPause : onRun}
-            disabled={program.length === 0}
-            size="sm"
-            variant={isRunning ? 'destructive' : 'default'}
-            className="gap-2"
-            aria-label={isRunning ? 'Pause program execution' : 'Run program'}
-          >
-            {isRunning ? (
-              <>
-                <Pause className="h-4 w-4" />
-                Pause
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4" />
-                Run
-              </>
-            )}
-          </Button>
-          <Button
-            onClick={onStep}
-            disabled={program.length === 0 || isRunning}
-            size="sm"
-            variant="secondary"
-            className="gap-2 col-span-2"
-            aria-label="Execute next command"
-          >
-            <SkipForward className="h-4 w-4" />
-            Step
-          </Button>
-        </div>
       </Card>
     </div>
   );

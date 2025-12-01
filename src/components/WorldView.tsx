@@ -1,12 +1,15 @@
 import { World, CellType, Direction, Position } from '@/models/types';
 import { Bug } from 'lucide-react';
-import { DragEvent, useState, useRef, memo } from 'react';
+import { DragEvent, useState, useRef, memo, useMemo } from 'react';
+import { GridColorTheme, ViewMode, gridColorStyles } from '@/hooks/useSettings';
 
 interface WorldViewProps {
   world: World;
-  onCellClick?: (position: Position) => void;
+  onCellClick?: (position: Position, isDragPaint?: boolean) => void;
   onCellDrop?: (position: Position, cellType: CellType | 'KARA') => void;
   selectedObject?: CellType | null | 'KARA';
+  gridColorTheme?: GridColorTheme;
+  viewMode?: ViewMode;
 }
 
 // Memoized cell component to prevent unnecessary re-renders
@@ -17,14 +20,17 @@ interface CellProps {
   isCharacter: boolean;
   characterDirection: Direction;
   selectedObject?: CellType | null | 'KARA';
-  onMouseDown: (x: number, y: number) => void;
+  onMouseDown: (x: number, y: number, e: React.MouseEvent) => void;
   onMouseUp: (x: number, y: number) => void;
   onMouseEnter: (x: number, y: number) => void;
-  onClick: (x: number, y: number) => void;
+  onClick: (x: number, y: number, e: React.MouseEvent) => void;
   onDrop: (e: DragEvent<HTMLDivElement>, x: number, y: number) => void;
   onDragOver: (e: DragEvent<HTMLDivElement>) => void;
   onDragStart: (e: DragEvent<HTMLDivElement>, x: number, y: number) => void;
   isDragging: boolean;
+  gridColorTheme: GridColorTheme;
+  isVisibleToKara: boolean;
+  viewMode: ViewMode;
 }
 
 const Cell = memo(({
@@ -41,7 +47,10 @@ const Cell = memo(({
   onDrop,
   onDragOver,
   onDragStart,
-  isDragging
+  isDragging,
+  gridColorTheme,
+  isVisibleToKara,
+  viewMode,
 }: CellProps) => {
   const getDirectionRotation = (direction: Direction): number => {
     switch (direction) {
@@ -84,11 +93,31 @@ const Cell = memo(({
     return parts.join('. ');
   };
 
+  // Get grid color styles based on theme
+  const colorStyle = gridColorStyles[gridColorTheme];
+
+  // Determine transparency for elements not visible to Kara
+  const shouldFade = viewMode === 'transparency' && !isVisibleToKara && cellType !== CellType.Empty;
+
+  // Get hover border color based on theme
+  const getHoverBorderClass = () => {
+    switch (gridColorTheme) {
+      case 'green':
+        return 'hover:border-green-300 dark:hover:border-green-700';
+      case 'blue':
+        return 'hover:border-sky-300 dark:hover:border-sky-700';
+      case 'white':
+        return 'hover:border-gray-300 dark:hover:border-gray-600';
+      case 'dark':
+        return 'hover:border-gray-500 dark:hover:border-gray-500';
+    }
+  };
+
   return (
     <div
       draggable={selectedObject === undefined && (isCharacter || cellType !== CellType.Empty)}
-      onClick={() => onClick(x, y)}
-      onMouseDown={() => onMouseDown(x, y)}
+      onClick={(e) => onClick(x, y, e)}
+      onMouseDown={(e) => onMouseDown(x, y, e)}
       onMouseUp={() => onMouseUp(x, y)}
       onMouseEnter={() => onMouseEnter(x, y)}
       onDrop={(e) => onDrop(e, x, y)}
@@ -100,9 +129,9 @@ const Cell = memo(({
       className={`
         w-14 h-14 rounded-md border-2 flex items-center justify-center
         transition-all duration-150 relative
-        bg-gradient-to-br from-green-50 to-green-100 border-green-200/50 dark:from-green-950/20 dark:to-green-900/20 dark:border-green-800/30
+        ${colorStyle.cell} ${colorStyle.cellDark}
         ${isCharacter ? 'ring-2 ring-accent ring-offset-2' : ''}
-        ${selectedObject !== undefined ? 'cursor-pointer hover:ring-2 hover:ring-accent/50' : 'hover:border-green-300 dark:hover:border-green-700'}
+        ${selectedObject !== undefined ? 'cursor-pointer hover:ring-2 hover:ring-accent/50' : getHoverBorderClass()}
         ${isDragging && selectedObject === undefined ? 'cursor-grabbing' : selectedObject === undefined && (isCharacter || cellType !== CellType.Empty) ? 'cursor-grab' : ''}
       `}
       style={{
@@ -112,7 +141,7 @@ const Cell = memo(({
       {/* Cell Content (show behind character if present) */}
       {cellType !== CellType.Empty && (
         <span
-          className={`text-2xl transition-all duration-300 ${isCharacter ? 'opacity-40 absolute' : ''}`}
+          className={`text-2xl transition-all duration-300 ${isCharacter ? 'opacity-40 absolute' : ''} ${shouldFade ? 'opacity-25' : ''}`}
           style={{
             animation:
               cellType === CellType.Mushroom ? 'slideIn 0.3s ease-out' : undefined,
@@ -149,26 +178,112 @@ const Cell = memo(({
     prevProps.isCharacter === nextProps.isCharacter &&
     prevProps.characterDirection === nextProps.characterDirection &&
     prevProps.selectedObject === nextProps.selectedObject &&
-    prevProps.isDragging === nextProps.isDragging
+    prevProps.isDragging === nextProps.isDragging &&
+    prevProps.gridColorTheme === nextProps.gridColorTheme &&
+    prevProps.isVisibleToKara === nextProps.isVisibleToKara &&
+    prevProps.viewMode === nextProps.viewMode
   );
 });
 
 Cell.displayName = 'Cell';
 
-const WorldView = ({ world, onCellClick, onCellDrop, selectedObject }: WorldViewProps) => {
-  const [isMouseDown, setIsMouseDown] = useState(false);
+const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTheme = 'green', viewMode = 'normal' }: WorldViewProps) => {
+  // Use refs for mouse state to ensure synchronous updates (React state is async)
+  const isMouseDownRef = useRef(false);
+  const isPaintingRef = useRef(false); // True when we're actively painting (tool selected + mouse down)
+  const startPaintCell = useRef<string | null>(null); // The cell where paint operation started
   const lastPaintedCell = useRef<string | null>(null);
   const [draggedElement, setDraggedElement] = useState<{ type: CellType | 'KARA'; from: Position } | null>(null);
 
-  const handleCellClick = (x: number, y: number) => {
+  // Calculate which cells are visible to Kara (for transparency mode)
+  // Kara can see: front cell, left cell, right cell, and the cell she's standing on
+  const visibleCells = useMemo(() => {
+    const visible = new Set<string>();
+    const { x, y } = world.character.position;
+    const direction = world.character.direction;
+
+    // Kara's current position is always visible
+    visible.add(`${x},${y}`);
+
+    // Helper to get position in a direction
+    const getPosition = (dir: Direction): { x: number; y: number } => {
+      switch (dir) {
+        case Direction.North:
+          return { x, y: y - 1 };
+        case Direction.South:
+          return { x, y: y + 1 };
+        case Direction.East:
+          return { x: x + 1, y };
+        case Direction.West:
+          return { x: x - 1, y };
+      }
+    };
+
+    // Get left direction
+    const getLeftDir = (dir: Direction): Direction => {
+      switch (dir) {
+        case Direction.North: return Direction.West;
+        case Direction.West: return Direction.South;
+        case Direction.South: return Direction.East;
+        case Direction.East: return Direction.North;
+      }
+    };
+
+    // Get right direction
+    const getRightDir = (dir: Direction): Direction => {
+      switch (dir) {
+        case Direction.North: return Direction.East;
+        case Direction.East: return Direction.South;
+        case Direction.South: return Direction.West;
+        case Direction.West: return Direction.North;
+      }
+    };
+
+    // Front cell
+    const front = getPosition(direction);
+    if (front.x >= 0 && front.x < world.width && front.y >= 0 && front.y < world.height) {
+      visible.add(`${front.x},${front.y}`);
+    }
+
+    // Left cell
+    const left = getPosition(getLeftDir(direction));
+    if (left.x >= 0 && left.x < world.width && left.y >= 0 && left.y < world.height) {
+      visible.add(`${left.x},${left.y}`);
+    }
+
+    // Right cell
+    const right = getPosition(getRightDir(direction));
+    if (right.x >= 0 && right.x < world.width && right.y >= 0 && right.y < world.height) {
+      visible.add(`${right.x},${right.y}`);
+    }
+
+    return visible;
+  }, [world.character.position.x, world.character.position.y, world.character.direction, world.width, world.height]);
+
+  // Internal function for painting cells (no event propagation needed)
+  // isDragPaint=true means we're dragging to paint (don't toggle, just place)
+  // isDragPaint=false means initial click (toggle behavior)
+  const paintCell = (x: number, y: number, isDragPaint: boolean = false) => {
     if (onCellClick && selectedObject !== undefined) {
-      onCellClick({ x, y });
+      onCellClick({ x, y }, isDragPaint);
     }
   };
 
-  const handleMouseDown = (x: number, y: number) => {
-    setIsMouseDown(true);
-    lastPaintedCell.current = `${x}-${y}`;
+  // Click handler is now only for stopping propagation - actual painting is done in mouseDown
+  const handleCellClick = (x: number, y: number, e: React.MouseEvent) => {
+    if (selectedObject !== undefined) {
+      // Stop propagation to prevent parent panning from triggering
+      e.stopPropagation();
+      // Don't call onCellClick here - it's handled in mouseDown to avoid double-toggling
+    }
+  };
+
+  const handleMouseDown = (x: number, y: number, e: React.MouseEvent) => {
+    const cellKey = `${x}-${y}`;
+    isMouseDownRef.current = true;
+    isPaintingRef.current = false; // Reset - we haven't started dragging yet
+    startPaintCell.current = cellKey; // Remember where we started
+    lastPaintedCell.current = cellKey;
 
     // When nothing is selected, check if clicking on an element to drag it
     if (selectedObject === undefined && onCellDrop) {
@@ -177,11 +292,20 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject }: WorldView
 
       if (isKara) {
         setDraggedElement({ type: 'KARA', from: { x, y } });
+        // Stop propagation to prevent panning while dragging elements
+        e.stopPropagation();
       } else if (cellType !== CellType.Empty) {
         setDraggedElement({ type: cellType, from: { x, y } });
+        // Stop propagation to prevent panning while dragging elements
+        e.stopPropagation();
       }
-    } else {
-      handleCellClick(x, y);
+      // If clicking on empty cell with no tool selected, allow panning (don't stop propagation)
+    } else if (selectedObject !== undefined) {
+      // Tool is selected - stop propagation to prevent panning
+      e.stopPropagation();
+      // Paint the cell on mouse down (not on click to avoid double-toggling)
+      // isDragPaint=false allows toggle behavior on initial click
+      paintCell(x, y, false);
     }
   };
 
@@ -199,37 +323,69 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject }: WorldView
       }
     }
 
-    setIsMouseDown(false);
+    isMouseDownRef.current = false;
+    isPaintingRef.current = false;
+    startPaintCell.current = null;
     lastPaintedCell.current = null;
     setDraggedElement(null);
   };
 
   const handleMouseUp = () => {
-    setIsMouseDown(false);
+    isMouseDownRef.current = false;
+    isPaintingRef.current = false;
+    startPaintCell.current = null;
     lastPaintedCell.current = null;
     setDraggedElement(null);
   };
 
   const handleMouseEnter = (x: number, y: number) => {
     const cellKey = `${x}-${y}`;
-    if (isMouseDown && lastPaintedCell.current !== cellKey) {
-      lastPaintedCell.current = cellKey;
 
-      // Don't paint when dragging an element
-      if (draggedElement) {
-        return;
-      }
-
-      // Don't paint on Kara's position
-      if (world.character.position.x === x && world.character.position.y === y) {
-        return;
-      }
-      handleCellClick(x, y);
+    // Only process if mouse is down (using ref for synchronous check)
+    if (!isMouseDownRef.current) {
+      return;
     }
+
+    // Don't paint when dragging an element (moving existing elements)
+    if (draggedElement) {
+      return;
+    }
+
+    // Check if a tool is selected for painting
+    if (selectedObject === undefined) {
+      return;
+    }
+
+    // Skip if this is the same cell we already painted or the starting cell
+    // This prevents accidental painting when mouse wobbles during a click
+    if (lastPaintedCell.current === cellKey || startPaintCell.current === cellKey) {
+      return;
+    }
+
+    // We've moved to a different cell - this is now a drag paint operation
+    isPaintingRef.current = true;
+
+    // Update last painted cell
+    lastPaintedCell.current = cellKey;
+
+    // Don't paint on Kara's position
+    if (world.character.position.x === x && world.character.position.y === y) {
+      return;
+    }
+
+    // isDragPaint=true means don't toggle, just place the element
+    paintCell(x, y, true);
   };
 
   const handleCellDrop = (e: DragEvent<HTMLDivElement>, x: number, y: number) => {
     e.preventDefault();
+
+    // If we're using mouse-based drag (draggedElement is set), skip HTML5 drop handling
+    // to avoid duplicate placement - the mouse-based system handles it in handleMouseUpOnCell
+    if (draggedElement) {
+      return;
+    }
+
     const cellType = e.dataTransfer.getData('cellType') as CellType | 'KARA';
     const sourceX = e.dataTransfer.getData('sourceX');
     const sourceY = e.dataTransfer.getData('sourceY');
@@ -260,6 +416,12 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject }: WorldView
 
   const handleCellDragStart = (e: DragEvent<HTMLDivElement>, x: number, y: number) => {
     if (selectedObject !== undefined) return; // Only allow dragging when no tool is selected
+
+    // If mouse-based drag is active, prevent HTML5 drag from also starting
+    if (draggedElement) {
+      e.preventDefault();
+      return;
+    }
 
     const isKara = world.character.position.x === x && world.character.position.y === y;
     const cellType = world.grid[y][x].type;
@@ -349,6 +511,7 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject }: WorldView
           row.map((cell, x) => {
             const isCharacter =
               world.character.position.x === x && world.character.position.y === y;
+            const isVisibleToKara = visibleCells.has(`${x},${y}`);
 
             return (
               <Cell
@@ -367,6 +530,9 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject }: WorldView
                 onDragOver={handleDragOver}
                 onDragStart={handleCellDragStart}
                 isDragging={!!draggedElement}
+                gridColorTheme={gridColorTheme}
+                isVisibleToKara={isVisibleToKara}
+                viewMode={viewMode}
               />
             );
           })

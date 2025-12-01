@@ -60,12 +60,54 @@ function getForwardPosition(position: Position, direction: Direction): Position 
 }
 
 /**
+ * Gets the position to the left of the character based on their direction
+ */
+function getLeftPosition(position: Position, direction: Direction): Position {
+  switch (direction) {
+    case Direction.North:
+      return { x: position.x - 1, y: position.y };
+    case Direction.East:
+      return { x: position.x, y: position.y - 1 };
+    case Direction.South:
+      return { x: position.x + 1, y: position.y };
+    case Direction.West:
+      return { x: position.x, y: position.y + 1 };
+  }
+}
+
+/**
+ * Gets the position to the right of the character based on their direction
+ */
+function getRightPosition(position: Position, direction: Direction): Position {
+  switch (direction) {
+    case Direction.North:
+      return { x: position.x + 1, y: position.y };
+    case Direction.East:
+      return { x: position.x, y: position.y + 1 };
+    case Direction.South:
+      return { x: position.x - 1, y: position.y };
+    case Direction.West:
+      return { x: position.x, y: position.y - 1 };
+  }
+}
+
+/**
  * Checks if a position is within bounds
  */
 function isInBounds(world: World, position: Position): boolean {
   return (
     position.x >= 0 && position.x < world.width && position.y >= 0 && position.y < world.height
   );
+}
+
+/**
+ * Wraps a position around the world edges (Pac-Man style)
+ */
+function wrapPosition(world: World, position: Position): Position {
+  return {
+    x: ((position.x % world.width) + world.width) % world.width,
+    y: ((position.y % world.height) + world.height) % world.height,
+  };
 }
 
 /**
@@ -101,25 +143,30 @@ function canPushMushroom(world: World, mushroomPos: Position, direction: Directi
  * Moves the character forward one step if possible
  * Returns a new World with updated character position
  * Handles pushing mushrooms if necessary
+ * Wraps around world edges (Pac-Man style)
  */
 export function moveForward(world: World): World {
-  const newPosition = getForwardPosition(world.character.position, world.character.direction);
+  const rawPosition = getForwardPosition(world.character.position, world.character.direction);
 
-  if (!isInBounds(world, newPosition)) {
-    return world; // Can't move out of bounds
-  }
+  // Wrap position around world edges if out of bounds
+  const newPosition = wrapPosition(world, rawPosition);
 
   const targetCellType = world.grid[newPosition.y][newPosition.x].type;
 
   // Check if there's a mushroom to push
   if (targetCellType === CellType.Mushroom) {
     // Try to push the mushroom
-    if (!canPushMushroom(world, newPosition, world.character.direction)) {
-      return world; // Can't push mushroom (blocked or edge)
+    const rawMushroomPos = getForwardPosition(newPosition, world.character.direction);
+    const mushroomNewPos = wrapPosition(world, rawMushroomPos);
+
+    const mushroomTargetCellType = world.grid[mushroomNewPos.y][mushroomNewPos.x].type;
+
+    // Mushroom can only be pushed to empty cells
+    if (mushroomTargetCellType !== CellType.Empty) {
+      return world; // Can't push mushroom (blocked)
     }
 
     // Push the mushroom
-    const mushroomNewPos = getForwardPosition(newPosition, world.character.direction);
     const newGrid = world.grid.map((row) => [...row]);
 
     // Move mushroom to new position
@@ -139,8 +186,9 @@ export function moveForward(world: World): World {
   }
 
   // Normal movement (no mushroom)
-  if (!isValidPosition(world, newPosition)) {
-    return world; // Can't move, return unchanged world
+  // Can move onto empty cells and clovers, but NOT trees
+  if (targetCellType !== CellType.Empty && targetCellType !== CellType.Clover) {
+    return world; // Can't move, blocked by tree
   }
 
   return {
@@ -245,4 +293,58 @@ export function placeClover(world: World): World {
       inventory: world.character.inventory - 1,
     },
   };
+}
+
+// ========== Sensor Functions ==========
+
+/**
+ * Checks if there is a tree in front of Kara
+ * With wrap-around, positions always wrap to the other side
+ */
+export function treeFront(world: World): boolean {
+  const rawPos = getForwardPosition(world.character.position, world.character.direction);
+  const frontPos = wrapPosition(world, rawPos);
+
+  return world.grid[frontPos.y][frontPos.x].type === CellType.Tree;
+}
+
+/**
+ * Checks if there is a tree to the left of Kara
+ * With wrap-around, positions always wrap to the other side
+ */
+export function treeLeft(world: World): boolean {
+  const rawPos = getLeftPosition(world.character.position, world.character.direction);
+  const leftPos = wrapPosition(world, rawPos);
+
+  return world.grid[leftPos.y][leftPos.x].type === CellType.Tree;
+}
+
+/**
+ * Checks if there is a tree to the right of Kara
+ * With wrap-around, positions always wrap to the other side
+ */
+export function treeRight(world: World): boolean {
+  const rawPos = getRightPosition(world.character.position, world.character.direction);
+  const rightPos = wrapPosition(world, rawPos);
+
+  return world.grid[rightPos.y][rightPos.x].type === CellType.Tree;
+}
+
+/**
+ * Checks if there is a mushroom in front of Kara
+ * With wrap-around, positions always wrap to the other side
+ */
+export function mushroomFront(world: World): boolean {
+  const rawPos = getForwardPosition(world.character.position, world.character.direction);
+  const frontPos = wrapPosition(world, rawPos);
+
+  return world.grid[frontPos.y][frontPos.x].type === CellType.Mushroom;
+}
+
+/**
+ * Checks if Kara is standing on a clover leaf
+ */
+export function onLeaf(world: World): boolean {
+  const { x, y } = world.character.position;
+  return world.grid[y][x].type === CellType.Clover;
 }

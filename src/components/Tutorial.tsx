@@ -44,7 +44,7 @@ const tutorialSteps: TutorialStep[] = [
   {
     title: 'Available Commands',
     description:
-      'Commands include Move Forward, Turn Left, Turn Right, Pick Clover, and Place Clover. Different levels allow different commands.',
+      'Commands include Move Forward, Turn Left, Turn Right, Pick Clover, and Place Clover. Different exercises allow different commands.',
     position: 'left',
   },
   {
@@ -66,15 +66,15 @@ const tutorialSteps: TutorialStep[] = [
     position: 'right',
   },
   {
-    title: 'Levels & Goals',
+    title: 'Exercises & Goals',
     description:
-      'Each level has a goal to complete. Solve it efficiently to earn up to 3 stars! Complete levels to unlock new challenges.',
+      'Each exercise has a goal to complete. Solve it efficiently to earn up to 3 stars! Complete exercises to unlock new challenges.',
     position: 'center',
   },
   {
     title: 'Ready to Start!',
     description:
-      "You're all set! Start with Level 1: First Steps to begin your journey. Have fun learning to code with Kara! 🎉",
+      "You're all set! Start with Exercise 1: First Steps to begin your journey. Have fun learning to code with Kara! 🎉",
     position: 'center',
   },
 ];
