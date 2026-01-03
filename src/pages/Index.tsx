@@ -87,9 +87,10 @@ const Index = () => {
   } = useSettings();
   const [currentScenario, setCurrentScenario] = useState<Scenario>(scenarios[0]);
 
-  // Zoom baseline: 1.68 scale = 100% for 5x5 grid
-  const BASELINE_ZOOM = 1.68;
-  const BASELINE_GRID_SIZE = 5;
+  // Zoom constants
+  const CELL_SIZE = 56; // w-14 = 56px
+  const BASELINE_GRID_SIZE = 9; // 100% zoom shows a 9x9 section
+  const GRID_PADDING = 64; // Padding around the grid
 
   // Use undo/redo for world state management - start with 9x9 blank world
   const {
@@ -114,7 +115,8 @@ const Index = () => {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [isTemplateMode, setIsTemplateMode] = useState(true);
   const [activeTab, setActiveTab] = useState<'map' | 'program'>('map');
-  const [zoom, setZoom] = useState(BASELINE_ZOOM);
+  const [zoom, setZoom] = useState(1); // Will be set to fit zoom on mount
+  const [fitZoom, setFitZoom] = useState(1); // Current fit zoom level for the grid size
   const [pendingWidth, setPendingWidth] = useState(9);
   const [pendingHeight, setPendingHeight] = useState(9);
   const [isResizingMap, setIsResizingMap] = useState(false);
@@ -143,13 +145,8 @@ const Index = () => {
   const [isTextKaraRunning, setIsTextKaraRunning] = useState(false);
   const [textKaraStepCount, setTextKaraStepCount] = useState(0); // Trigger for useEffect
 
-  // Check if this is the user's first visit
-  useEffect(() => {
-    const hasSeenTutorial = localStorage.getItem('kara-tutorial-completed');
-    if (!hasSeenTutorial) {
-      setShowTutorial(true);
-    }
-  }, []);
+  // Tutorial is now only shown when user opens it from the information menu
+  // (removed auto-show on first visit)
 
   // Prevent browser zoom with Ctrl/Cmd + wheel to allow only our custom zoom
   useEffect(() => {
@@ -173,22 +170,60 @@ const Index = () => {
     setPendingHeight(world.height);
   }, [world.width, world.height]);
 
-  // Set initial zoom to fit the grid on first load
-  useEffect(() => {
-    // Calculate fit zoom for the initial grid
-    const cellSize = 56; // w-14 = 56px
-    const padding = 64; // Grid padding and card padding
-    const containerWidth = 800; // Approximate container width
-    const containerHeight = 600; // Approximate container height
+  // Calculate fit zoom for the current grid size
+  const calculateFitZoom = useCallback(() => {
+    const container = document.querySelector('[role="region"][aria-label="World view"]');
+    if (!container) return 1;
 
-    const gridWidth = world.width * cellSize + padding;
-    const gridHeight = world.height * cellSize + padding;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    const gridWidth = world.width * CELL_SIZE + GRID_PADDING;
+    const gridHeight = world.height * CELL_SIZE + GRID_PADDING;
+
     const zoomX = containerWidth / gridWidth;
     const zoomY = containerHeight / gridHeight;
-    const fitZoom = Math.min(zoomX, zoomY) * 0.95;
+    return Math.min(zoomX, zoomY) * 0.88; // 88% to ensure no scrollbars appear
+  }, [world.width, world.height]);
 
-    setZoom(fitZoom);
-  }, []); // Only run on mount
+  // Calculate the zoom level for 100% (always shows 9x9 section)
+  const calculateBaselineZoom = useCallback(() => {
+    const container = document.querySelector('[role="region"][aria-label="World view"]');
+    if (!container) return 1;
+
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    // 100% zoom should always fit a 9x9 grid
+    const baselineGridWidth = BASELINE_GRID_SIZE * CELL_SIZE + GRID_PADDING;
+    const baselineGridHeight = BASELINE_GRID_SIZE * CELL_SIZE + GRID_PADDING;
+
+    const zoomX = containerWidth / baselineGridWidth;
+    const zoomY = containerHeight / baselineGridHeight;
+    return Math.min(zoomX, zoomY) * 0.88; // Same as fit zoom - 100% = fit for 9x9 grid
+  }, []);
+
+  // Update fit zoom when grid size changes and auto-zoom to fit
+  useEffect(() => {
+    // Small delay to ensure container is rendered
+    const timer = setTimeout(() => {
+      const newFitZoom = calculateFitZoom();
+      setFitZoom(newFitZoom);
+      setZoom(newFitZoom);
+      setPanOffset({ x: 0, y: 0 }); // Reset pan when auto-fitting
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [world.width, world.height, calculateFitZoom]);
+
+  // Check if current zoom is approximately equal to fit zoom
+  const isAtFitZoom = Math.abs(zoom - fitZoom) < 0.01;
+
+  // Calculate zoom percentage relative to baseline (9x9 = 100%)
+  const getZoomPercentage = useCallback(() => {
+    const baselineZoom = calculateBaselineZoom();
+    if (baselineZoom === 0) return 100;
+    return Math.round((zoom / baselineZoom) * 100);
+  }, [zoom, calculateBaselineZoom]);
 
   const loadScenario = useCallback(
     (scenarioId: string) => {
@@ -1070,11 +1105,14 @@ const Index = () => {
                   </h3>
                   <div className="space-y-2">
                     <div className="text-xs text-muted-foreground mb-2">
-                      Current: {Math.round((zoom / BASELINE_ZOOM) * 100)}%
+                      Current: {isAtFitZoom ? 'Fit' : `${getZoomPercentage()}%`}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <Button
-                        onClick={() => setZoom(BASELINE_ZOOM)}
+                        onClick={() => {
+                          const baselineZoom = calculateBaselineZoom();
+                          setZoom(baselineZoom);
+                        }}
                         size="sm"
                         variant="outline"
                         className="gap-1"
@@ -1083,25 +1121,10 @@ const Index = () => {
                       </Button>
                       <Button
                         onClick={() => {
-                          // Calculate zoom to fit entire grid, relative to 5x5 baseline
-                          const container = document.querySelector('[role="region"][aria-label="World view"]');
-                          if (container) {
-                            const containerWidth = container.clientWidth;
-                            const containerHeight = container.clientHeight;
-                            const cellSize = 56; // Actual cell size (w-14 = 56px)
-                            const padding = 64; // Account for grid padding and card padding
-
-                            // Calculate what zoom would be needed to fit this grid
-                            const gridWidth = world.width * cellSize + padding;
-                            const gridHeight = world.height * cellSize + padding;
-                            const zoomX = containerWidth / gridWidth;
-                            const zoomY = containerHeight / gridHeight;
-                            const fitZoom = Math.min(zoomX, zoomY) * 0.95; // 95% to add small padding
-
-                            // For a 5x5 grid, fitZoom should equal BASELINE_ZOOM (100%)
-                            // For larger grids, fitZoom will be proportionally smaller
-                            setZoom(fitZoom);
-                          }
+                          const newFitZoom = calculateFitZoom();
+                          setFitZoom(newFitZoom);
+                          setZoom(newFitZoom);
+                          setPanOffset({ x: 0, y: 0 });
                         }}
                         size="sm"
                         variant="outline"
@@ -1141,7 +1164,7 @@ const Index = () => {
 
               {/* Center - World View */}
               <div
-                className="flex flex-col items-center justify-center animate-in fade-in zoom-in duration-700 overflow-auto relative"
+                className="flex flex-col items-center justify-center animate-in fade-in zoom-in duration-700 overflow-hidden relative"
                 role="region"
                 aria-label="World view"
                 onWheel={(e) => {

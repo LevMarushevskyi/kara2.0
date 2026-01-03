@@ -1,6 +1,6 @@
 import { World, CellType, Direction, Position } from '@/models/types';
 import { Bug } from 'lucide-react';
-import { DragEvent, useState, useRef, memo, useMemo } from 'react';
+import { DragEvent, useState, useRef, memo, useMemo, useEffect, useCallback } from 'react';
 import { GridColorTheme, ViewMode, gridColorStyles } from '@/hooks/useSettings';
 
 interface WorldViewProps {
@@ -195,6 +195,48 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
   const lastPaintedCell = useRef<string | null>(null);
   const [draggedElement, setDraggedElement] = useState<{ type: CellType | 'KARA'; from: Position } | null>(null);
 
+  // Drag line state
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragCurrentPos, setDragCurrentPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragHoverCell, setDragHoverCell] = useState<Position | null>(null);
+
+  // Check if a drop is valid at a given cell
+  const isValidDrop = useCallback((targetCell: Position | null, dragType: CellType | 'KARA' | null): boolean => {
+    if (!targetCell || !dragType) return false;
+
+    const { x, y } = targetCell;
+
+    // Check bounds
+    if (x < 0 || x >= world.width || y < 0 || y >= world.height) return false;
+
+    const targetCellType = world.grid[y][x].type;
+    const isKaraAtTarget = world.character.position.x === x && world.character.position.y === y;
+
+    if (dragType === 'KARA') {
+      // Kara can only be placed on empty cells or clover cells (not trees or mushrooms)
+      return targetCellType !== CellType.Tree && targetCellType !== CellType.Mushroom;
+    } else {
+      // Objects can be placed on empty cells, but not where Kara is (unless it's a clover)
+      // Trees and mushrooms can't be placed on top of other objects
+      if (targetCellType !== CellType.Empty) return false;
+      if (isKaraAtTarget && dragType !== CellType.Clover) return false;
+      return true;
+    }
+  }, [world]);
+
+  // Track mouse movement for drag line
+  useEffect(() => {
+    if (!draggedElement) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      setDragCurrentPos({ x: e.clientX, y: e.clientY });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [draggedElement]);
+
   // Calculate which cells are visible to Kara (for transparency mode)
   // Kara can see: front cell, left cell, right cell, and the cell she's standing on
   const visibleCells = useMemo(() => {
@@ -292,10 +334,16 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
 
       if (isKara) {
         setDraggedElement({ type: 'KARA', from: { x, y } });
+        setDragStartPos({ x: e.clientX, y: e.clientY });
+        setDragCurrentPos({ x: e.clientX, y: e.clientY });
+        setDragHoverCell({ x, y });
         // Stop propagation to prevent panning while dragging elements
         e.stopPropagation();
       } else if (cellType !== CellType.Empty) {
         setDraggedElement({ type: cellType, from: { x, y } });
+        setDragStartPos({ x: e.clientX, y: e.clientY });
+        setDragCurrentPos({ x: e.clientX, y: e.clientY });
+        setDragHoverCell({ x, y });
         // Stop propagation to prevent panning while dragging elements
         e.stopPropagation();
       }
@@ -314,8 +362,8 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
     if (draggedElement && onCellDrop && onCellClick) {
       const { from, type } = draggedElement;
 
-      // Only move if dropped on a different cell
-      if (from.x !== x || from.y !== y) {
+      // Only move if dropped on a different cell and the drop is valid
+      if ((from.x !== x || from.y !== y) && isValidDrop({ x, y }, type)) {
         // Clear the source cell first (by setting it to empty)
         onCellClick(from);
         // Then place the element at the new location
@@ -328,6 +376,9 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
     startPaintCell.current = null;
     lastPaintedCell.current = null;
     setDraggedElement(null);
+    setDragStartPos(null);
+    setDragCurrentPos(null);
+    setDragHoverCell(null);
   };
 
   const handleMouseUp = () => {
@@ -336,6 +387,9 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
     startPaintCell.current = null;
     lastPaintedCell.current = null;
     setDraggedElement(null);
+    setDragStartPos(null);
+    setDragCurrentPos(null);
+    setDragHoverCell(null);
   };
 
   const handleMouseEnter = (x: number, y: number) => {
@@ -346,8 +400,9 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
       return;
     }
 
-    // Don't paint when dragging an element (moving existing elements)
+    // Update hover cell for drag line when dragging an element
     if (draggedElement) {
+      setDragHoverCell({ x, y });
       return;
     }
 
@@ -476,9 +531,15 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
     }
   };
 
+  // Calculate if current drop location is valid
+  const isDragValid = draggedElement && dragHoverCell
+    ? isValidDrop(dragHoverCell, draggedElement.type)
+    : false;
+
   return (
     <div
-      className="inline-block p-6 bg-card rounded-xl border border-border shadow-lg"
+      ref={gridContainerRef}
+      className="inline-block p-6 bg-card rounded-xl border border-border shadow-lg relative"
       role="region"
       aria-label="Kara's World"
     >
@@ -538,6 +599,39 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
           })
         )}
       </div>
+
+      {/* Drag line SVG overlay */}
+      {draggedElement && dragStartPos && dragCurrentPos && gridContainerRef.current && (
+        <svg
+          className="fixed inset-0 pointer-events-none z-50"
+          style={{ width: '100vw', height: '100vh' }}
+        >
+          <line
+            x1={dragStartPos.x}
+            y1={dragStartPos.y}
+            x2={dragCurrentPos.x}
+            y2={dragCurrentPos.y}
+            stroke={isDragValid ? '#22c55e' : '#ef4444'}
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeDasharray="8 4"
+          />
+          {/* Start point circle */}
+          <circle
+            cx={dragStartPos.x}
+            cy={dragStartPos.y}
+            r={6}
+            fill={isDragValid ? '#22c55e' : '#ef4444'}
+          />
+          {/* End point circle */}
+          <circle
+            cx={dragCurrentPos.x}
+            cy={dragCurrentPos.y}
+            r={6}
+            fill={isDragValid ? '#22c55e' : '#ef4444'}
+          />
+        </svg>
+      )}
     </div>
   );
 };
