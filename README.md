@@ -197,9 +197,58 @@ Pure TypeScript modules with no React dependencies. Fully testable and reusable.
 
 ## Quality & Tooling
 
-- [x] Unit tests for the simulation engine (68 tests covering world model, commands, and scenarios)
+- [x] Unit tests for the simulation engine (178 tests covering world model, commands, scenarios, and executors)
 - [x] Component tests for core UI
 - [x] Linting + formatting scripts (ESLint, Prettier, TypeScript type checking)
+
+---
+
+## Tests & Security
+
+The application includes comprehensive testing and security measures to ensure reliability and safety for students.
+
+### Test Coverage (191 tests)
+
+| Test File | Tests | Coverage Area |
+|-----------|-------|---------------|
+| `textKaraExecutor.test.ts` | 50 | Code execution, parsing, security sandbox |
+| `world.test.ts` | 48 | World simulation, movement, sensors, wrap-around |
+| `scenario.test.ts` | 29 | Goal conditions, progress tracking |
+| `fsmExecutor.test.ts` | 18 | FSM execution, state transitions, error handling |
+| `worldTemplates.test.ts` | 16 | File import/export, validation |
+| `fsm.test.ts` | 16 | FSM parsing, XML/JSON formats |
+| `program.test.ts` | 14 | Visual command blocks |
+
+### Security Measures
+
+Student code execution is sandboxed with multiple layers of protection:
+
+| Layer | Protection |
+|-------|------------|
+| **Global Shadowing** | Browser APIs (`window`, `document`, `fetch`, `localStorage`, etc.) are shadowed with `undefined` |
+| **Strict Mode** | Prevents `this` from leaking the global object |
+| **Proxy Wrapper** | Blocks `constructor` and `__proto__` access on the `kara` API |
+| **Prototype Freezing** | `Object.prototype` is frozen during execution to prevent pollution |
+| **Function Shadowing** | The `Function` constructor is shadowed to prevent escapes |
+| **Step Limits** | 10,000 steps max for both text code and FSM execution |
+| **CSP Headers** | Strict Content Security Policy in `index.html` |
+
+### Resource Limits
+
+| Resource | Limit |
+|----------|-------|
+| Code/FSM execution | 10,000 steps |
+| World dimensions | 100×100 max |
+| File upload size | 1MB max |
+
+### Running Tests
+
+```bash
+npm test              # Run all tests
+npm run test:coverage # With coverage report
+npm run typecheck     # TypeScript checking
+npm run lint          # ESLint
+```
 
 ---
 

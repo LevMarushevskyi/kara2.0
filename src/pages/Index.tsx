@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { List, Keyboard, HelpCircle, Code2, Play, Pause, SkipForward, Square, FastForward, Upload, Download, Settings, Sun, Moon, Monitor, Eye, EyeOff, Check, AlertTriangle } from 'lucide-react';
+import { List, Keyboard, HelpCircle, Code2, Play, Pause, SkipForward, Square, FastForward, Upload, Download, Settings, Sun, Moon, Monitor, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import WorldView from '@/components/WorldView';
 import ProgramPanel from '@/components/ProgramPanel';
 import CommandPanel from '@/components/CommandPanel';
@@ -27,8 +27,8 @@ import {
   downloadWorldAsKaraX,
   downloadProgram,
   getTemplateByName,
-  isValidWorld,
   createEmptyTemplate,
+  validateWorldData,
 } from '@/models/worldTemplates';
 import {
   TextKaraLanguage,
@@ -133,6 +133,8 @@ const Index = () => {
   const [fsmCurrentState, setFsmCurrentState] = useState<string | null>(null);
   const [isFsmRunning, setIsFsmRunning] = useState(false);
   const [fsmStepTrigger, setFsmStepTrigger] = useState(0); // Counter to trigger re-execution
+  const [fsmStepCount, setFsmStepCount] = useState(0); // Step counter for DoS protection
+  const FSM_MAX_STEPS = 10000; // Maximum FSM steps before auto-stop
 
   // Text-based Kara code states (one for each language)
   const [javaKaraCode, setJavaKaraCode] = useState<string>(() => loadCode('JavaKara'));
@@ -242,6 +244,7 @@ const Index = () => {
       toast.success(`Exercise loaded: ${scenario.title}`);
       announce(`Exercise loaded: ${scenario.title}`);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setWorld and other setters are stable from useState
     [clearWorldHistory, announce]
   );
 
@@ -339,6 +342,7 @@ const Index = () => {
 
       return newWorld;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setWorld is stable from useState
   }, []);
 
   const handleRun = () => {
@@ -353,6 +357,7 @@ const Index = () => {
       setIsFsmRunning(true);
       setFsmCurrentState(fsmProgram.startStateId);
       setFsmStepTrigger(0); // Reset trigger counter for new run
+      setFsmStepCount(0); // Reset step counter for DoS protection
       toast.success('FSM program started!');
       announce('FSM program started');
       return;
@@ -626,21 +631,22 @@ const Index = () => {
     toast.success('World exported successfully!');
   };
 
-  const handleExportProgram = () => {
+  const _handleExportProgram = () => {
     downloadProgram(program, `kara-program-${currentScenario.id}.json`);
     toast.success('Program exported successfully!');
   };
 
-  const handleImportWorld = (importedWorld: World) => {
-    if (isValidWorld(importedWorld)) {
-      setWorld(importedWorld);
+  const handleImportWorld = (importedWorld: unknown) => {
+    const validation = validateWorldData(importedWorld);
+    if (validation.valid && validation.world) {
+      setWorld(validation.world);
       setIsTemplateMode(true); // Imported worlds are in template mode - all commands allowed
       setProgram([]);
       setCurrentStep(-1);
       setIsRunning(false);
       toast.success('World imported successfully!');
     } else {
-      toast.error('Invalid world file!');
+      toast.error(validation.error || 'Invalid world file!');
     }
   };
 
@@ -734,16 +740,28 @@ const Index = () => {
   useEffect(() => {
     if (!isFsmRunning || !fsmCurrentState) return;
 
+    // Check for max step limit (DoS protection)
+    if (fsmStepCount >= FSM_MAX_STEPS) {
+      setIsFsmRunning(false);
+      setFsmCurrentState(null);
+      setFsmStepCount(0);
+      toast.error(`Execution limit exceeded (${FSM_MAX_STEPS} steps). Possible infinite loop.`);
+      announce(`FSM error: Execution limit exceeded. Possible infinite loop.`, 'assertive');
+      return;
+    }
+
     // Execute one FSM step
     const result = executeFSMStep(world, fsmProgram, fsmCurrentState);
 
-    // Update the world
+    // Update the world and step count
     setWorld(result.world);
+    setFsmStepCount(prev => prev + 1);
 
     // Check if we hit an error
     if (result.error) {
       setIsFsmRunning(false);
       setFsmCurrentState(null);
+      setFsmStepCount(0);
       toast.error(result.error);
       announce(`FSM error: ${result.error}`, 'assertive');
       return;
@@ -753,6 +771,7 @@ const Index = () => {
     if (result.stopped) {
       setIsFsmRunning(false);
       setFsmCurrentState(null);
+      setFsmStepCount(0);
       toast.success('FSM program completed!');
       announce('FSM program completed');
       return;
@@ -766,7 +785,7 @@ const Index = () => {
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFsmRunning, fsmCurrentState, fsmStepTrigger, executionSpeed]);
+  }, [isFsmRunning, fsmCurrentState, fsmStepTrigger, executionSpeed, fsmStepCount]);
 
   // Text-based code auto-execution (streaming interpreter)
   useEffect(() => {
@@ -1285,7 +1304,7 @@ const Index = () => {
                     onClearWorld={handleClearWorld}
                     onExportWorld={handleExportWorld}
                     onImportWorld={handleImportWorld}
-                    onSaveTemplate={(name) => toast.info('Save template feature coming soon!')}
+                    onSaveTemplate={(_name) => toast.info('Save template feature coming soon!')}
                     onLoadTemplate={handleLoadTemplate}
                   />
                 )}
@@ -1483,7 +1502,7 @@ const Index = () => {
                               } else {
                                 toast.success('Program uploaded successfully!');
                               }
-                            } catch (error) {
+                            } catch {
                               toast.error('Failed to upload program. Invalid file format.');
                             }
                           };

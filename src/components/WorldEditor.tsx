@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { CellType, World } from '@/models/types';
 import { parseWorldContent } from '@/models/worldTemplates';
 import { DragEvent } from 'react';
-import { Trash2, Download, Upload, Save, Folder, Eraser } from 'lucide-react';
+import { Trash2, Download, Upload, Folder, Eraser } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -23,7 +23,7 @@ interface WorldEditorProps {
   onClearWorld: () => void;
   onExportWorld: () => void;
   onImportWorld: (world: World) => void;
-  onSaveTemplate: (name: string) => void;
+  onSaveTemplate?: (name: string) => void;
   onLoadTemplate: (name: string) => void;
 }
 
@@ -40,7 +40,7 @@ const WorldEditor = ({
   onClearWorld,
   onExportWorld,
   onImportWorld,
-  onSaveTemplate,
+  onSaveTemplate: _onSaveTemplate,
   onLoadTemplate,
 }: WorldEditorProps) => {
   const [showTemplates, setShowTemplates] = useState(false);
@@ -88,7 +88,7 @@ const WorldEditor = ({
           const world = parseWorldContent(content);
           onImportWorld(world);
           toast.success('World imported successfully!');
-        } catch (error) {
+        } catch {
           toast.error('Failed to import world. Invalid file format.');
         }
       };

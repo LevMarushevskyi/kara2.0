@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { goalConditions, saveProgress, getProgress, getScenarioProgress } from './scenario';
 import { World, CellType, Direction } from './types';
 

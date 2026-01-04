@@ -300,6 +300,7 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
     }
 
     return visible;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Position x/y are used individually, not the position object
   }, [world.character.position.x, world.character.position.y, world.character.direction, world.width, world.height]);
 
   // Internal function for painting cells (no event propagation needed)

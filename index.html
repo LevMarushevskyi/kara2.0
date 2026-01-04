@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Content Security Policy
+         - default-src 'self': Only allow resources from same origin
+         - script-src 'self' 'unsafe-eval': Allow scripts from self + eval for student code sandbox
+         - style-src 'self' 'unsafe-inline': Allow inline styles for Tailwind/Radix
+         - img-src 'self' data: blob:: Allow images from self, data URIs, and blob URLs
+         - connect-src 'self': Only allow connections to same origin
+         - frame-ancestors 'self': Prevent clickjacking by only allowing same-origin framing
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self';" />
     <title>Kara the Ladybug - Educational Programming Game</title>
     <meta name="description" content="Learn programming concepts through fun puzzle challenges with Kara the Ladybug" />
     <meta name="author" content="Kara 2.0" />

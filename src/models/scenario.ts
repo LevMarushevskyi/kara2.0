@@ -87,35 +87,96 @@ export interface ScenarioProgress {
 
 const PROGRESS_KEY = 'kara-world-progress';
 
+/**
+ * Safely retrieves progress from localStorage with fallback
+ */
 export function getProgress(): ScenarioProgress[] {
-  const stored = localStorage.getItem(PROGRESS_KEY);
-  return stored ? JSON.parse(stored) : [];
+  try {
+    const stored = localStorage.getItem(PROGRESS_KEY);
+    if (!stored) return [];
+
+    const parsed = JSON.parse(stored);
+
+    // Validate that parsed data is an array
+    if (!Array.isArray(parsed)) {
+      console.warn('Invalid progress data format, resetting...');
+      return [];
+    }
+
+    // Validate each entry has required fields
+    return parsed.filter((p: unknown): p is ScenarioProgress => {
+      if (!p || typeof p !== 'object') return false;
+      const obj = p as Record<string, unknown>;
+      return (
+        typeof obj.scenarioId === 'string' &&
+        typeof obj.completed === 'boolean' &&
+        typeof obj.stars === 'number' &&
+        obj.stars >= 0 && obj.stars <= 3
+      );
+    });
+  } catch (e) {
+    console.warn('Failed to load progress from localStorage:', e);
+    return [];
+  }
 }
 
-export function saveProgress(scenarioId: string, commandCount: number): void {
-  const progress = getProgress();
-  const existing = progress.find((p) => p.scenarioId === scenarioId);
-
-  const stars = commandCount <= 5 ? 3 : commandCount <= 10 ? 2 : 1;
-
-  if (existing) {
-    existing.completed = true;
-    existing.stars = Math.max(existing.stars, stars);
-    existing.bestCommandCount = Math.min(existing.bestCommandCount || Infinity, commandCount);
-    existing.completedAt = new Date().toISOString();
-  } else {
-    progress.push({
-      scenarioId,
-      completed: true,
-      stars,
-      bestCommandCount: commandCount,
-      completedAt: new Date().toISOString(),
-    });
+/**
+ * Safely saves progress to localStorage
+ * Returns true if successful, false otherwise
+ */
+export function saveProgress(scenarioId: string, commandCount: number): boolean {
+  // Validate inputs
+  if (!scenarioId || typeof scenarioId !== 'string') {
+    console.warn('Invalid scenarioId provided to saveProgress');
+    return false;
   }
 
-  localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+  if (typeof commandCount !== 'number' || commandCount < 0 || !Number.isFinite(commandCount)) {
+    console.warn('Invalid commandCount provided to saveProgress');
+    return false;
+  }
+
+  try {
+    const progress = getProgress();
+    const existing = progress.find((p) => p.scenarioId === scenarioId);
+
+    const stars = commandCount <= 5 ? 3 : commandCount <= 10 ? 2 : 1;
+
+    if (existing) {
+      existing.completed = true;
+      existing.stars = Math.max(existing.stars, stars);
+      existing.bestCommandCount = Math.min(existing.bestCommandCount || Infinity, commandCount);
+      existing.completedAt = new Date().toISOString();
+    } else {
+      progress.push({
+        scenarioId,
+        completed: true,
+        stars,
+        bestCommandCount: commandCount,
+        completedAt: new Date().toISOString(),
+      });
+    }
+
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+    return true;
+  } catch (e) {
+    // Handle quota exceeded or other localStorage errors
+    if (e instanceof DOMException && (
+      e.code === 22 ||
+      e.name === 'QuotaExceededError' ||
+      e.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    )) {
+      console.warn('localStorage quota exceeded. Progress may not be saved.');
+    } else {
+      console.warn('Failed to save progress:', e);
+    }
+    return false;
+  }
 }
 
 export function getScenarioProgress(scenarioId: string): ScenarioProgress | undefined {
+  if (!scenarioId || typeof scenarioId !== 'string') {
+    return undefined;
+  }
   return getProgress().find((p) => p.scenarioId === scenarioId);
 }

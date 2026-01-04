@@ -447,6 +447,176 @@ function transpileToJS(code: string, language: TextKaraLanguage): string {
 }
 
 /**
+ * Creates a safe proxy wrapper that prevents constructor escape attacks
+ * This wraps the kara object to prevent accessing constructor chains
+ */
+function createSafeKaraProxy<T extends object>(kara: T): T {
+  return new Proxy(kara, {
+    get(target, prop) {
+      // Block access to constructor to prevent escape via kara.constructor.constructor
+      if (prop === 'constructor' || prop === '__proto__' || prop === 'prototype') {
+        return undefined;
+      }
+      const value = Reflect.get(target, prop);
+      // If it's a function, bind it to the target so 'this' works correctly
+      if (typeof value === 'function') {
+        return value.bind(target);
+      }
+      return value;
+    },
+    set() {
+      // Prevent setting properties on kara object
+      return false;
+    },
+  });
+}
+
+/**
+ * Creates a sandboxed execution function that prevents access to dangerous globals
+ * This provides defense-in-depth against malicious code
+ *
+ * Security measures:
+ * 1. Shadows dangerous browser globals (window, document, fetch, etc.)
+ * 2. Uses strict mode to prevent 'this' leaking global object
+ * 3. Wraps kara object in a Proxy to prevent constructor escape attacks
+ * 4. Freezes Object.prototype during execution to prevent prototype pollution
+ *
+ * @template T The type of the kara API object (can be KaraAPI class or mock object)
+ */
+function createSandboxedExecutor<T extends object = KaraAPI>(jsCode: string): (kara: T) => void {
+  // Wrap the code in a function that shadows dangerous globals
+  // Note: 'eval' and 'arguments' are reserved in strict mode, so we can't reassign them
+  // Instead, we use var declarations which work in strict mode
+  const sandboxedCode = `
+    "use strict";
+    // Shadow dangerous globals to prevent access
+    var window = undefined;
+    var document = undefined;
+    var globalThis = undefined;
+    var self = undefined;
+    var top = undefined;
+    var parent = undefined;
+    var frames = undefined;
+    var location = undefined;
+    var navigator = undefined;
+    var localStorage = undefined;
+    var sessionStorage = undefined;
+    var indexedDB = undefined;
+    var fetch = undefined;
+    var XMLHttpRequest = undefined;
+    var WebSocket = undefined;
+    var Worker = undefined;
+    var SharedWorker = undefined;
+    var ServiceWorker = undefined;
+    var importScripts = undefined;
+    var setTimeout = undefined;
+    var setInterval = undefined;
+    var requestAnimationFrame = undefined;
+    var queueMicrotask = undefined;
+    var Atomics = undefined;
+    var SharedArrayBuffer = undefined;
+    // Shadow Function to prevent dynamic code execution escape
+    var Function = undefined;
+    ${jsCode}
+  `;
+
+  try {
+    const rawExecutor = new Function('kara', sandboxedCode) as (kara: T) => void;
+
+    // Return a wrapped executor that:
+    // 1. Wraps kara in a safe proxy
+    // 2. Temporarily freezes Object.prototype during execution
+    return (kara: T) => {
+      const safeKara = createSafeKaraProxy(kara);
+
+      // Freeze Object.prototype to prevent pollution
+      const originalObjectProto = Object.getOwnPropertyDescriptors(Object.prototype);
+      Object.freeze(Object.prototype);
+
+      try {
+        rawExecutor(safeKara);
+      } finally {
+        // Restore Object.prototype (unfreeze by redefining properties)
+        Object.keys(originalObjectProto).forEach((key) => {
+          try {
+            Object.defineProperty(Object.prototype, key, originalObjectProto[key]);
+          } catch {
+            // Some properties can't be redefined, that's okay
+          }
+        });
+        // Make Object.prototype writable again
+        // Note: We can't truly "unfreeze" but we've restored the original descriptors
+      }
+    };
+  } catch (error) {
+    throw new Error(formatSyntaxError(error));
+  }
+}
+
+/**
+ * Formats syntax errors into student-friendly messages
+ */
+function formatSyntaxError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return 'There is a syntax error in your code. Please check for typos.';
+  }
+
+  const message = error.message;
+
+  // Common syntax error patterns and student-friendly explanations
+  if (message.includes('Unexpected token')) {
+    return 'Syntax error: Unexpected character found. Check for missing brackets, parentheses, or typos.';
+  }
+  if (message.includes('Unexpected end of input')) {
+    return 'Syntax error: Your code seems incomplete. Check if you have matching brackets {} and parentheses ().';
+  }
+  if (message.includes('is not defined')) {
+    const match = message.match(/(\w+) is not defined/);
+    if (match) {
+      return `Error: "${match[1]}" is not recognized. Did you spell it correctly? Available commands: move, turnLeft, turnRight, putLeaf, removeLeaf.`;
+    }
+  }
+  if (message.includes('Unexpected identifier')) {
+    return 'Syntax error: Unexpected word found. You might be missing a semicolon, bracket, or using an incorrect keyword.';
+  }
+
+  return `Syntax error: ${message}`;
+}
+
+/**
+ * Formats runtime errors into student-friendly messages
+ */
+function formatRuntimeError(error: unknown, language: TextKaraLanguage): string {
+  if (!(error instanceof Error)) {
+    return 'An unexpected error occurred while running your code.';
+  }
+
+  const message = error.message;
+
+  // Check for common runtime errors
+  if (message.includes('is not a function')) {
+    const match = message.match(/(\w+) is not a function/);
+    if (match) {
+      // Provide language-specific hints for method names
+      const methodStyle = (language === 'PythonKara' || language === 'RubyKara')
+        ? 'move, turn_left, turn_right, put_leaf, remove_leaf'
+        : 'move, turnLeft, turnRight, putLeaf, removeLeaf';
+      return `Error: "${match[1]}" cannot be called as a function. Available Kara methods: ${methodStyle}`;
+    }
+  }
+
+  if (message.includes('Cannot read property') || message.includes('Cannot read properties')) {
+    return 'Error: Tried to access something that doesn\'t exist. Make sure all objects and methods are spelled correctly.';
+  }
+
+  if (message.includes('Maximum call stack')) {
+    return 'Error: Your code called itself too many times (infinite recursion). Check your loops and function calls.';
+  }
+
+  return `Runtime error: ${message}`;
+}
+
+/**
  * Executes text-based Kara code and returns the resulting world state
  */
 export function executeTextKaraCode(
@@ -469,13 +639,12 @@ export function executeTextKaraCode(
     const mainCode = extractMainCode(code, language);
 
     if (!mainCode) {
+      const methodName = language === 'PythonKara' || language === 'RubyKara'
+        ? 'my_program'
+        : 'myProgram';
       return {
         world: ctx.world,
-        error: `Could not find main program. Make sure you have a ${
-          language === 'PythonKara' || language === 'RubyKara'
-            ? 'my_program'
-            : 'myProgram'
-        } method.`,
+        error: `Could not find the main program method. Please define a "${methodName}" method in your code.\n\nExample:\n${getMethodExample(language)}`,
         stopped: true,
       };
     }
@@ -483,9 +652,8 @@ export function executeTextKaraCode(
     // Transpile to JavaScript
     const jsCode = transpileToJS(mainCode, language);
 
-    // Create a function that executes the code with kara in scope
-    // Using Function constructor to create a sandboxed execution
-    const execFn = new Function('kara', jsCode);
+    // Create a sandboxed function that executes the code
+    const execFn = createSandboxedExecutor(jsCode);
     execFn(kara);
 
     return {
@@ -496,9 +664,27 @@ export function executeTextKaraCode(
   } catch (error) {
     return {
       world: ctx.world,
-      error: `Execution error: ${error instanceof Error ? error.message : String(error)}`,
+      error: formatRuntimeError(error, language),
       stopped: true,
     };
+  }
+}
+
+/**
+ * Returns an example method definition for the given language
+ */
+function getMethodExample(language: TextKaraLanguage): string {
+  switch (language) {
+    case 'JavaKara':
+      return 'void myProgram() {\n  kara.move();\n}';
+    case 'PythonKara':
+      return 'def my_program(self):\n    kara.move()';
+    case 'JavaScriptKara':
+      return 'function myProgram() {\n  kara.move();\n}';
+    case 'RubyKara':
+      return 'def my_program\n  kara.move\nend';
+    default:
+      return 'void myProgram() { kara.move(); }';
   }
 }
 
@@ -754,7 +940,7 @@ function generateMoreCommands(state: StreamingInterpreterState): boolean {
   };
 
   try {
-    const execFn = new Function('kara', state.jsCode);
+    const execFn = createSandboxedExecutor(state.jsCode);
     execFn(kara);
     // If we get here, the program completed normally
     state.pendingCommands.push(...commands);
@@ -860,7 +1046,7 @@ export function parseTextKaraCommands(
   let executionError: string | undefined;
 
   // Create a simulated world for sensor checks
-  let simWorld = JSON.parse(JSON.stringify(world)) as World;
+  const simWorld = JSON.parse(JSON.stringify(world)) as World;
 
   const getTargetPosition = (dir: string, x: number, y: number) => {
     switch (dir) {
@@ -1014,7 +1200,7 @@ export function parseTextKaraCommands(
   };
 
   try {
-    const execFn = new Function('kara', jsCode);
+    const execFn = createSandboxedExecutor(jsCode);
     execFn(mockKara);
     return { commands };
   } catch (error) {

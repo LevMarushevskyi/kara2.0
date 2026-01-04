@@ -113,7 +113,7 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
           } else {
             toast.error('Invalid FSM program file!');
           }
-        } catch (error) {
+        } catch {
           toast.error('Failed to import FSM program. Invalid file format.');
         }
       };

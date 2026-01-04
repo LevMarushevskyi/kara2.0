@@ -93,7 +93,7 @@ describe('World Model', () => {
       expect(newWorld.character.position).toEqual({ x: 3, y: 2 });
     });
 
-    it('should not move when blocked by boundary', () => {
+    it('should wrap around when moving past boundary (Pac-Man style)', () => {
       const world: World = {
         width: 5,
         height: 5,
@@ -108,7 +108,8 @@ describe('World Model', () => {
       };
 
       const newWorld = moveForward(world);
-      expect(newWorld.character.position).toEqual({ x: 2, y: 0 });
+      // Should wrap to the bottom of the grid
+      expect(newWorld.character.position).toEqual({ x: 2, y: 4 });
     });
 
     it('should not move when blocked by tree', () => {
@@ -216,7 +217,7 @@ describe('World Model', () => {
       expect(newWorld.grid[1][2].type).toBe(CellType.Mushroom);
     });
 
-    it('should not push mushroom out of bounds', () => {
+    it('should push mushroom to wrapped position when at boundary', () => {
       const grid = Array(5)
         .fill(null)
         .map(() =>
@@ -238,8 +239,11 @@ describe('World Model', () => {
       };
 
       const newWorld = moveForward(world);
-      expect(newWorld.character.position).toEqual({ x: 2, y: 1 });
-      expect(newWorld.grid[0][2].type).toBe(CellType.Mushroom);
+      // Character moves to mushroom's position
+      expect(newWorld.character.position).toEqual({ x: 2, y: 0 });
+      // Mushroom wraps to bottom of grid
+      expect(newWorld.grid[0][2].type).toBe(CellType.Empty);
+      expect(newWorld.grid[4][2].type).toBe(CellType.Mushroom);
     });
   });
 
@@ -628,7 +632,8 @@ describe('World Model', () => {
         expect(treeFront(world)).toBe(false);
       });
 
-      it('should return true when facing boundary (out of bounds)', () => {
+      it('should wrap around and check opposite side when facing boundary', () => {
+        // With wrap-around, treeFront checks the wrapped position
         const world: World = {
           width: 5,
           height: 5,
@@ -646,6 +651,33 @@ describe('World Model', () => {
           },
         };
 
+        // Position wraps to (2, 4) which is empty, so no tree
+        expect(treeFront(world)).toBe(false);
+      });
+
+      it('should detect tree on wrapped position', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        // Place tree at bottom which is where wrap-around leads to
+        grid[4][2] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 2, y: 0 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        // Position wraps to (2, 4) which has a tree
         expect(treeFront(world)).toBe(true);
       });
 
@@ -744,7 +776,8 @@ describe('World Model', () => {
         expect(treeLeft(world)).toBe(false);
       });
 
-      it('should return true when left is out of bounds', () => {
+      it('should wrap around and check opposite side when left is at boundary', () => {
+        // With wrap-around, treeLeft checks the wrapped position
         const world: World = {
           width: 5,
           height: 5,
@@ -762,6 +795,33 @@ describe('World Model', () => {
           },
         };
 
+        // Left of (0,2) facing North wraps to (4, 2) which is empty
+        expect(treeLeft(world)).toBe(false);
+      });
+
+      it('should detect tree on wrapped left position', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        // Place tree at right edge which is where wrap-around leads to
+        grid[2][4] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 0, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        // Left of (0,2) facing North wraps to (4, 2) which has a tree
         expect(treeLeft(world)).toBe(true);
       });
     });
@@ -836,7 +896,8 @@ describe('World Model', () => {
         expect(treeRight(world)).toBe(false);
       });
 
-      it('should return true when right is out of bounds', () => {
+      it('should wrap around and check opposite side when right is at boundary', () => {
+        // With wrap-around, treeRight checks the wrapped position
         const world: World = {
           width: 5,
           height: 5,
@@ -854,6 +915,33 @@ describe('World Model', () => {
           },
         };
 
+        // Right of (4,2) facing North wraps to (0, 2) which is empty
+        expect(treeRight(world)).toBe(false);
+      });
+
+      it('should detect tree on wrapped right position', () => {
+        const grid = Array(5)
+          .fill(null)
+          .map(() =>
+            Array(5)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        // Place tree at left edge which is where wrap-around leads to
+        grid[2][0] = { type: CellType.Tree };
+
+        const world: World = {
+          width: 5,
+          height: 5,
+          grid,
+          character: {
+            position: { x: 4, y: 2 },
+            direction: Direction.North,
+            inventory: 0,
+          },
+        };
+
+        // Right of (4,2) facing North wraps to (0, 2) which has a tree
         expect(treeRight(world)).toBe(true);
       });
     });

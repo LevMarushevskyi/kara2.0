@@ -1,6 +1,6 @@
 // Pure functions for world simulation logic
 
-import { World, Direction, Position, Cell, CellType, Character } from './types';
+import { World, Direction, Position, Cell, CellType } from './types';
 
 /**
  * Creates a new empty world with the character in the center
@@ -113,7 +113,7 @@ function wrapPosition(world: World, position: Position): Position {
 /**
  * Checks if a position is valid (within bounds and not blocked)
  */
-function isValidPosition(world: World, position: Position): boolean {
+function _isValidPosition(world: World, position: Position): boolean {
   if (!isInBounds(world, position)) {
     return false;
   }
@@ -127,7 +127,7 @@ function isValidPosition(world: World, position: Position): boolean {
 /**
  * Checks if a mushroom can be pushed in a given direction
  */
-function canPushMushroom(world: World, mushroomPos: Position, direction: Direction): boolean {
+function _canPushMushroom(world: World, mushroomPos: Position, direction: Direction): boolean {
   const pushToPos = getForwardPosition(mushroomPos, direction);
 
   if (!isInBounds(world, pushToPos)) {

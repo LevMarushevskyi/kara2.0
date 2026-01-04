@@ -134,7 +134,7 @@ export function getAcceptString(language: TextKaraLanguage): string {
 /**
  * Validates that content looks like code for the given language
  */
-export function isValidTextKaraCode(content: string, language: TextKaraLanguage): boolean {
+export function isValidTextKaraCode(content: string, _language: TextKaraLanguage): boolean {
   // Basic validation - just check it's non-empty text
   if (!content || typeof content !== 'string') return false;
 

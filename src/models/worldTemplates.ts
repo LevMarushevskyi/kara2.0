@@ -1,6 +1,7 @@
 // World templates and import/export utilities
 
 import { World, CellType, Direction } from './types';
+import { Command } from './program';
 
 // ========== .world File Format Support (KaraX Compatibility) ==========
 
@@ -418,14 +419,14 @@ export function downloadWorld(world: World, filename: string = 'kara-world.json'
 /**
  * Exports a program as JSON string
  */
-export function exportProgram(program: any[]): string {
+export function exportProgram(program: Command[]): string {
   return JSON.stringify(program, null, 2);
 }
 
 /**
  * Downloads a program as a JSON file
  */
-export function downloadProgram(program: any[], filename: string = 'kara-program.json') {
+export function downloadProgram(program: Command[], filename: string = 'kara-program.json') {
   const json = exportProgram(program);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -438,22 +439,189 @@ export function downloadProgram(program: any[], filename: string = 'kara-program
   URL.revokeObjectURL(url);
 }
 
+// Constants for world validation
+const MIN_WORLD_SIZE = 1;
+const MAX_WORLD_SIZE = 100;
+const MAX_FILE_SIZE = 1024 * 1024; // 1MB max file size
+
+/**
+ * Validates world dimensions are within acceptable ranges
+ */
+export function validateWorldDimensions(width: unknown, height: unknown): { valid: boolean; error?: string } {
+  if (typeof width !== 'number' || typeof height !== 'number') {
+    return { valid: false, error: 'Width and height must be numbers' };
+  }
+
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return { valid: false, error: 'Width and height must be finite numbers' };
+  }
+
+  if (!Number.isInteger(width) || !Number.isInteger(height)) {
+    return { valid: false, error: 'Width and height must be whole numbers' };
+  }
+
+  if (width < MIN_WORLD_SIZE || height < MIN_WORLD_SIZE) {
+    return { valid: false, error: `World size must be at least ${MIN_WORLD_SIZE}x${MIN_WORLD_SIZE}` };
+  }
+
+  if (width > MAX_WORLD_SIZE || height > MAX_WORLD_SIZE) {
+    return { valid: false, error: `World size cannot exceed ${MAX_WORLD_SIZE}x${MAX_WORLD_SIZE}` };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Validates that a cell type is valid
+ */
+function isValidCellType(type: unknown): type is CellType {
+  return Object.values(CellType).includes(type as CellType);
+}
+
+/**
+ * Validates that a direction is valid
+ */
+function isValidDirection(direction: unknown): direction is Direction {
+  return Object.values(Direction).includes(direction as Direction);
+}
+
 /**
  * Validates that an imported world is valid
+ * Performs comprehensive validation including type checking and range validation
  */
-export function isValidWorld(data: any): data is World {
-  return (
-    data &&
-    typeof data.width === 'number' &&
-    typeof data.height === 'number' &&
-    Array.isArray(data.grid) &&
-    data.grid.length === data.height &&
-    data.grid.every((row: any) => Array.isArray(row) && row.length === data.width) &&
-    data.character &&
-    typeof data.character.position === 'object' &&
-    typeof data.character.position.x === 'number' &&
-    typeof data.character.position.y === 'number' &&
-    typeof data.character.direction === 'string' &&
-    typeof data.character.inventory === 'number'
-  );
+export function isValidWorld(data: unknown): data is World {
+  // Check if data exists and is an object
+  if (!data || typeof data !== 'object') {
+    return false;
+  }
+
+  const obj = data as Record<string, unknown>;
+
+  // Validate dimensions
+  const dimensionValidation = validateWorldDimensions(obj.width, obj.height);
+  if (!dimensionValidation.valid) {
+    return false;
+  }
+
+  const width = obj.width as number;
+  const height = obj.height as number;
+
+  // Validate grid structure
+  if (!Array.isArray(obj.grid)) {
+    return false;
+  }
+
+  if (obj.grid.length !== height) {
+    return false;
+  }
+
+  // Validate each row and cell
+  for (let y = 0; y < height; y++) {
+    const row = obj.grid[y];
+    if (!Array.isArray(row) || row.length !== width) {
+      return false;
+    }
+
+    for (let x = 0; x < width; x++) {
+      const cell = row[x];
+      if (!cell || typeof cell !== 'object') {
+        return false;
+      }
+      if (!isValidCellType((cell as Record<string, unknown>).type)) {
+        return false;
+      }
+    }
+  }
+
+  // Validate character
+  if (!obj.character || typeof obj.character !== 'object') {
+    return false;
+  }
+
+  const character = obj.character as Record<string, unknown>;
+
+  // Validate character position
+  if (!character.position || typeof character.position !== 'object') {
+    return false;
+  }
+
+  const position = character.position as Record<string, unknown>;
+  if (typeof position.x !== 'number' || typeof position.y !== 'number') {
+    return false;
+  }
+
+  // Position can be -1,-1 (off-map) or within bounds
+  const x = position.x;
+  const y = position.y;
+  const isOffMap = x === -1 && y === -1;
+  const isInBounds = x >= 0 && x < width && y >= 0 && y < height;
+  if (!isOffMap && !isInBounds) {
+    return false;
+  }
+
+  // Validate direction
+  if (!isValidDirection(character.direction)) {
+    return false;
+  }
+
+  // Validate inventory
+  if (typeof character.inventory !== 'number' ||
+      !Number.isFinite(character.inventory) ||
+      character.inventory < 0 ||
+      !Number.isInteger(character.inventory)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Safely parses JSON content with size limit check
+ * Returns parsed data or throws a user-friendly error
+ */
+export function safeParseJSON(content: string): unknown {
+  // Check file size
+  if (content.length > MAX_FILE_SIZE) {
+    throw new Error('File is too large. Maximum file size is 1MB.');
+  }
+
+  try {
+    return JSON.parse(content);
+  } catch {
+    throw new Error('Invalid file format. The file does not contain valid data.');
+  }
+}
+
+/**
+ * Validates and returns detailed errors for world data
+ */
+export function validateWorldData(data: unknown): { valid: boolean; error?: string; world?: World } {
+  if (!data || typeof data !== 'object') {
+    return { valid: false, error: 'File is empty or not a valid format' };
+  }
+
+  const obj = data as Record<string, unknown>;
+
+  // Validate dimensions
+  const dimensionValidation = validateWorldDimensions(obj.width, obj.height);
+  if (!dimensionValidation.valid) {
+    return { valid: false, error: dimensionValidation.error };
+  }
+
+  // Validate grid
+  if (!Array.isArray(obj.grid)) {
+    return { valid: false, error: 'World data is missing the grid' };
+  }
+
+  // Validate character
+  if (!obj.character || typeof obj.character !== 'object') {
+    return { valid: false, error: 'World data is missing character information' };
+  }
+
+  // Full validation
+  if (!isValidWorld(data)) {
+    return { valid: false, error: 'World data is corrupted or incomplete' };
+  }
+
+  return { valid: true, world: data as World };
 }

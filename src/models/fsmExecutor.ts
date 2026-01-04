@@ -1,7 +1,7 @@
 // FSM Program Executor for Kara
 
 import { World } from './types';
-import { FSMProgram, FSMState, FSMTransition, FSMAction, DetectorType } from './fsm';
+import { FSMProgram, FSMTransition, FSMAction, DetectorType } from './fsm';
 import { moveForward, turnLeft, turnRight, pickClover, placeClover } from './world';
 import {  treeFront, treeLeft, treeRight, mushroomFront, onLeaf } from './world';
 
@@ -66,6 +66,36 @@ function executeAction(world: World, action: FSMAction): World {
 }
 
 /**
+ * Gets a human-readable description of the current sensor conditions
+ */
+function describeSensorConditions(world: World): string {
+  const conditions: string[] = [];
+
+  if (treeFront(world)) conditions.push('tree in front');
+  if (treeLeft(world)) conditions.push('tree to the left');
+  if (treeRight(world)) conditions.push('tree to the right');
+  if (mushroomFront(world)) conditions.push('mushroom in front');
+  if (onLeaf(world)) conditions.push('standing on a clover');
+
+  if (conditions.length === 0) {
+    return 'no obstacles detected, not on a clover';
+  }
+
+  return conditions.join(', ');
+}
+
+/**
+ * Gets a human-readable name for a state
+ */
+function getStateName(program: FSMProgram, stateId: string): string {
+  const state = program.states.find(s => s.id === stateId);
+  if (!state) return `unknown state (${stateId})`;
+  if (stateId === program.stopStateId) return 'STOP';
+  if (stateId === program.startStateId) return `${state.name} (Start)`;
+  return state.name;
+}
+
+/**
  * Executes one step of the FSM program
  * Returns: { world, nextStateId, stopped, error }
  */
@@ -79,6 +109,16 @@ export function executeFSMStep(
   stopped: boolean;
   error?: string;
 } {
+  // Validate inputs
+  if (!program || !program.states || !Array.isArray(program.states)) {
+    return {
+      world,
+      nextStateId: currentStateId,
+      stopped: true,
+      error: 'The FSM program is not properly defined. Please create some states first.',
+    };
+  }
+
   // Find the current state
   const currentState = program.states.find((s) => s.id === currentStateId);
 
@@ -87,7 +127,7 @@ export function executeFSMStep(
       world,
       nextStateId: currentStateId,
       stopped: true,
-      error: 'Current state not found',
+      error: `Cannot find the current state. This might happen if you deleted a state while the program was running. Try resetting the program.`,
     };
   }
 
@@ -107,18 +147,56 @@ export function executeFSMStep(
 
   if (!matchingTransition) {
     // No matching transition - program is stuck
+    const sensorDescription = describeSensorConditions(world);
+    const stateName = getStateName(program, currentStateId);
+
     return {
       world,
       nextStateId: currentStateId,
       stopped: true,
-      error: 'No matching transition found in current state',
+      error: `Kara is stuck in state "${stateName}"! No transition matches the current situation: ${sensorDescription}.\n\nTip: Add a transition that handles this case, or use "yes or no" (wildcard) for sensor conditions you don't care about.`,
     };
   }
 
   // Execute all actions in the matching transition
   let newWorld = world;
   for (const action of matchingTransition.actions) {
+    const previousWorld = newWorld;
     newWorld = executeAction(newWorld, action);
+
+    // Check if action failed (world unchanged when it shouldn't be)
+    if (newWorld === previousWorld) {
+      // moveForward can fail if blocked
+      if (action.type === 'move') {
+        return {
+          world: newWorld,
+          nextStateId: currentStateId,
+          stopped: true,
+          error: `Kara cannot move forward - there's something blocking the way! Check your sensor conditions to avoid this situation.`,
+        };
+      }
+      // pickClover can fail if no clover
+      if (action.type === 'pickClover') {
+        return {
+          world: newWorld,
+          nextStateId: currentStateId,
+          stopped: true,
+          error: `Kara cannot pick up a clover - there's no clover here! Make sure the "on leaf?" condition is "yes" before picking up.`,
+        };
+      }
+      // placeClover can fail if inventory empty or cell not empty
+      if (action.type === 'placeClover') {
+        const inventoryEmpty = world.character.inventory === 0;
+        return {
+          world: newWorld,
+          nextStateId: currentStateId,
+          stopped: true,
+          error: inventoryEmpty
+            ? `Kara cannot place a clover - the inventory is empty! Pick up some clovers first.`
+            : `Kara cannot place a clover here - the cell is not empty!`,
+        };
+      }
+    }
   }
 
   // Transition to the next state
