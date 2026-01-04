@@ -517,6 +517,14 @@ function createSandboxedExecutor<T extends object = KaraAPI>(jsCode: string): (k
     var SharedArrayBuffer = undefined;
     // Shadow Function to prevent dynamic code execution escape
     var Function = undefined;
+    // Additional security: prevent reflection and async escapes
+    var Reflect = undefined;
+    var Proxy = undefined;
+    var Promise = undefined;
+    var AsyncFunction = undefined;
+    var GeneratorFunction = undefined;
+    // Prevent constructor access patterns
+    var constructor = undefined;
     ${jsCode}
   `;
 

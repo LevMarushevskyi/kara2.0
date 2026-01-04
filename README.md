@@ -250,5 +250,26 @@ npm run typecheck     # TypeScript checking
 npm run lint          # ESLint
 ```
 
+### Code Quality
+
+| Metric | Status |
+|--------|--------|
+| ESLint Errors | 0 |
+| ESLint Warnings | 7 (shadcn/ui patterns) |
+| TypeScript `strict` mode | Enabled |
+| TypeScript `strictNullChecks` | Enabled |
+| TypeScript `noImplicitAny` | Enabled |
+| Error Boundaries | App-level + component fallbacks |
+
+### Error Handling
+
+The application includes React Error Boundaries to gracefully handle runtime errors:
+
+- **App-level boundary** (`src/components/ErrorBoundary.tsx`) wraps the entire application
+- **Component fallbacks** (`src/components/error-fallbacks/`) for WorldView, CodeEditor, and FSMEditor
+- **Centralized error handler** (`src/lib/errorHandler.ts`) provides consistent error codes and user-friendly messages
+- Displays user-friendly error messages with retry functionality
+- Logs errors to console for debugging
+
 ---
 

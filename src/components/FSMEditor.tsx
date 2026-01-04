@@ -672,11 +672,11 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
                     </p>
                   </div>
 
-                  <div>
+                  <div className="overflow-hidden">
                     <h4 className="text-sm font-medium mb-2">Functions</h4>
                     <div className="flex gap-4">
                       {/* Left Column - Commands */}
-                      <div className="w-32 space-y-1">
+                      <div className="w-32 space-y-1 flex-shrink-0">
                         <div
                           draggable
                           onDragStart={(e) => handleActionDragStart(e, 'move')}
@@ -725,7 +725,7 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
                       </div>
 
                       {/* Center - Detectors and Transition Rows */}
-                      <div className="flex-1 space-y-3">
+                      <div className="flex-1 space-y-3 min-w-0 overflow-hidden">
                         {/* Detectors Section (shared by all rows) */}
                         <div className="border-2 border-border rounded-lg p-3 bg-muted/10">
                           <label className="text-xs font-medium text-muted-foreground mb-2 block">
@@ -763,7 +763,7 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
                         </div>
 
                         {/* Transition Rows */}
-                        <div className="space-y-2">
+                        <div className="space-y-2 min-w-0">
                           <label className="text-xs font-medium text-muted-foreground block">
                             Transitions (when detectors match)
                           </label>
@@ -775,95 +775,103 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
                               <div
                                 key={row.id}
                                 onClick={() => setSelectedRowId(row.id)}
-                                className={`border-2 rounded-lg transition-all cursor-pointer ${
+                                className={`border-2 rounded-lg transition-all cursor-pointer overflow-hidden ${
                                   selectedRowId === row.id
                                     ? 'border-blue-500 ring-2 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20'
                                     : 'border-border bg-muted/20 hover:border-accent/50'
                                 }`}
                               >
-                                <div className="flex items-center gap-2 p-2">
-                                  {/* Delete Button */}
+                                <div className="flex items-center gap-2 p-2 w-full">
+                                  {/* Delete Button - Fixed on left */}
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleDeleteRow(row.id);
                                     }}
-                                    className="text-destructive hover:bg-destructive/10 rounded p-1 text-lg font-bold"
+                                    className="flex-shrink-0 text-destructive hover:bg-destructive/10 rounded p-1 text-lg font-bold"
                                     title="Delete function"
                                   >
                                     ×
                                   </button>
 
-                                  {/* Logic Gates aligned with detectors above */}
-                                  <div className="flex gap-2">
-                                    {activeDetectors.map((detector) => {
-                                      const state = row.detectorConditions[detector];
-                                      return (
-                                        <div
-                                          key={detector}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleToggleLogicGate(row.id, detector);
-                                          }}
-                                          className="flex items-center justify-center w-16 px-2 py-1 bg-background rounded border border-border cursor-pointer hover:bg-secondary/50 transition-colors"
-                                          title={`Toggle ${detector} detector`}
-                                        >
-                                          <div className="text-xs font-bold">
-                                            {state === true ? 'yes' : state === false ? 'no' : 'yes or no'}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-
-                                  {/* Actions (horizontal row) */}
-                                  <div
-                                    className="flex-1 flex items-center gap-2 min-h-[48px] px-2"
-                                    onDrop={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      const action = e.dataTransfer.getData('action') as ActionType;
-                                      if (action && row.id === selectedRowId) {
-                                        handleAddActionToRow(action);
-                                      }
-                                    }}
-                                    onDragOver={handleActionDragOver}
-                                  >
-                                    {row.actions.length === 0 ? (
-                                      <div className="text-xs text-muted-foreground">
-                                        {selectedRowId === row.id
-                                          ? 'Drag actions here'
-                                          : 'No actions'}
+                                  {/* Scrollable middle section for gates and actions */}
+                                  <div className="flex-1 overflow-x-auto min-w-0 scrollbar-thin" style={{ scrollbarWidth: 'thin' }}>
+                                    <div className="flex items-center gap-2 min-w-max">
+                                      {/* Logic Gates aligned with detectors above */}
+                                      <div className="flex gap-2 flex-shrink-0">
+                                        {activeDetectors.map((detector) => {
+                                          const state = row.detectorConditions[detector];
+                                          return (
+                                            <div
+                                              key={detector}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleToggleLogicGate(row.id, detector);
+                                              }}
+                                              className="flex items-center justify-center w-16 px-2 py-1 bg-background rounded border border-border cursor-pointer hover:bg-secondary/50 transition-colors flex-shrink-0"
+                                              title={`Toggle ${detector} detector`}
+                                            >
+                                              <div className="text-xs font-bold">
+                                                {state === true ? 'yes' : state === false ? 'no' : 'yes or no'}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
                                       </div>
-                                    ) : (
-                                      row.actions.map((action, index) => (
-                                        <div
-                                          key={index}
-                                          className="flex items-center gap-1 px-2 py-1 bg-secondary rounded-full border border-border"
-                                        >
-                                          <span className="text-xl">
-                                            {action.type === 'move' && '↑'}
-                                            {action.type === 'turnLeft' && '↶'}
-                                            {action.type === 'turnRight' && '↷'}
-                                            {action.type === 'pickClover' && '🍀'}
-                                            {action.type === 'placeClover' && '⬇️'}
-                                          </span>
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleRemoveActionFromRow(row.id, index);
-                                            }}
-                                            className="text-xs hover:text-destructive"
-                                          >
-                                            ×
-                                          </button>
-                                        </div>
-                                      ))
-                                    )}
+
+                                      {/* Separator */}
+                                      <div className="w-px h-8 bg-border flex-shrink-0" />
+
+                                      {/* Actions (horizontal row) */}
+                                      <div
+                                        className="flex items-center gap-2 min-h-[48px] px-2"
+                                        onDrop={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          const action = e.dataTransfer.getData('action') as ActionType;
+                                          if (action && row.id === selectedRowId) {
+                                            handleAddActionToRow(action);
+                                          }
+                                        }}
+                                        onDragOver={handleActionDragOver}
+                                      >
+                                        {row.actions.length === 0 ? (
+                                          <div className="text-xs text-muted-foreground whitespace-nowrap">
+                                            {selectedRowId === row.id
+                                              ? 'Drag actions here'
+                                              : 'No actions'}
+                                          </div>
+                                        ) : (
+                                          row.actions.map((action, index) => (
+                                            <div
+                                              key={index}
+                                              className="flex items-center gap-1 px-2 py-1 bg-secondary rounded-full border border-border flex-shrink-0"
+                                            >
+                                              <span className="text-xl">
+                                                {action.type === 'move' && '↑'}
+                                                {action.type === 'turnLeft' && '↶'}
+                                                {action.type === 'turnRight' && '↷'}
+                                                {action.type === 'pickClover' && '🍀'}
+                                                {action.type === 'placeClover' && '⬇️'}
+                                              </span>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleRemoveActionFromRow(row.id, index);
+                                                }}
+                                                className="text-xs hover:text-destructive"
+                                              >
+                                                ×
+                                              </button>
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
 
-                                  {/* Next State Dropdown */}
-                                  <div className="flex items-center gap-2">
+                                  {/* Next State Dropdown - Fixed on right */}
+                                  <div className="flex items-center gap-2 flex-shrink-0">
                                     <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">
                                       Next State:
                                     </label>

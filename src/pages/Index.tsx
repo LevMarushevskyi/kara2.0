@@ -48,6 +48,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { useScreenReader } from '@/hooks/useScreenReader';
 import { useSettings, GridColorTheme, ViewMode } from '@/hooks/useSettings';
+import { useZoomPan } from '@/hooks/useZoomPan';
 import { Slider } from '@/components/ui/slider';
 import {
   DropdownMenu,
@@ -115,15 +116,32 @@ const Index = () => {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [isTemplateMode, setIsTemplateMode] = useState(true);
   const [activeTab, setActiveTab] = useState<'map' | 'program'>('map');
-  const [zoom, setZoom] = useState(1); // Will be set to fit zoom on mount
-  const [fitZoom, setFitZoom] = useState(1); // Current fit zoom level for the grid size
   const [pendingWidth, setPendingWidth] = useState(9);
   const [pendingHeight, setPendingHeight] = useState(9);
   const [isResizingMap, setIsResizingMap] = useState(false);
-  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [showInfoDialog, setShowInfoDialog] = useState(false);
+
+  // Use zoom/pan hook for map navigation
+  const {
+    zoom,
+    setZoom,
+    panOffset,
+    setPanOffset,
+    isPanning,
+    setIsPanning,
+    panStart,
+    setPanStart,
+    getZoomPercentage,
+    isAtFitZoom,
+    handleZoomFit,
+    handleZoom100,
+  } = useZoomPan({
+    worldWidth: world.width,
+    worldHeight: world.height,
+    cellSize: CELL_SIZE,
+    baselineGridSize: BASELINE_GRID_SIZE,
+    gridPadding: GRID_PADDING,
+  });
   const [exerciseCompleteData, setExerciseCompleteData] = useState<{
     stars: number;
     commandCount: number;
@@ -171,61 +189,6 @@ const Index = () => {
     setPendingWidth(world.width);
     setPendingHeight(world.height);
   }, [world.width, world.height]);
-
-  // Calculate fit zoom for the current grid size
-  const calculateFitZoom = useCallback(() => {
-    const container = document.querySelector('[role="region"][aria-label="World view"]');
-    if (!container) return 1;
-
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
-
-    const gridWidth = world.width * CELL_SIZE + GRID_PADDING;
-    const gridHeight = world.height * CELL_SIZE + GRID_PADDING;
-
-    const zoomX = containerWidth / gridWidth;
-    const zoomY = containerHeight / gridHeight;
-    return Math.min(zoomX, zoomY) * 0.88; // 88% to ensure no scrollbars appear
-  }, [world.width, world.height]);
-
-  // Calculate the zoom level for 100% (always shows 9x9 section)
-  const calculateBaselineZoom = useCallback(() => {
-    const container = document.querySelector('[role="region"][aria-label="World view"]');
-    if (!container) return 1;
-
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
-
-    // 100% zoom should always fit a 9x9 grid
-    const baselineGridWidth = BASELINE_GRID_SIZE * CELL_SIZE + GRID_PADDING;
-    const baselineGridHeight = BASELINE_GRID_SIZE * CELL_SIZE + GRID_PADDING;
-
-    const zoomX = containerWidth / baselineGridWidth;
-    const zoomY = containerHeight / baselineGridHeight;
-    return Math.min(zoomX, zoomY) * 0.88; // Same as fit zoom - 100% = fit for 9x9 grid
-  }, []);
-
-  // Update fit zoom when grid size changes and auto-zoom to fit
-  useEffect(() => {
-    // Small delay to ensure container is rendered
-    const timer = setTimeout(() => {
-      const newFitZoom = calculateFitZoom();
-      setFitZoom(newFitZoom);
-      setZoom(newFitZoom);
-      setPanOffset({ x: 0, y: 0 }); // Reset pan when auto-fitting
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [world.width, world.height, calculateFitZoom]);
-
-  // Check if current zoom is approximately equal to fit zoom
-  const isAtFitZoom = Math.abs(zoom - fitZoom) < 0.01;
-
-  // Calculate zoom percentage relative to baseline (9x9 = 100%)
-  const getZoomPercentage = useCallback(() => {
-    const baselineZoom = calculateBaselineZoom();
-    if (baselineZoom === 0) return 100;
-    return Math.round((zoom / baselineZoom) * 100);
-  }, [zoom, calculateBaselineZoom]);
 
   const loadScenario = useCallback(
     (scenarioId: string) => {
@@ -597,6 +560,31 @@ const Index = () => {
         newGrid[position.y][position.x] = { type: cellType };
       }
 
+      return { ...prevWorld, grid: newGrid };
+    });
+  };
+
+  // Clear a cell (used during drag/drop to clear source cell)
+  const handleCellClear = (position: Position) => {
+    setWorld((prevWorld) => {
+      const isKaraPosition =
+        position.x === prevWorld.character.position.x &&
+        position.y === prevWorld.character.position.y;
+
+      // If clearing Kara's position, move her off-map
+      if (isKaraPosition) {
+        return {
+          ...prevWorld,
+          character: {
+            ...prevWorld.character,
+            position: { x: -1, y: -1 },
+          },
+        };
+      }
+
+      // Clear the cell
+      const newGrid = prevWorld.grid.map((row) => [...row]);
+      newGrid[position.y][position.x] = { type: CellType.Empty };
       return { ...prevWorld, grid: newGrid };
     });
   };
@@ -1128,10 +1116,7 @@ const Index = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <Button
-                        onClick={() => {
-                          const baselineZoom = calculateBaselineZoom();
-                          setZoom(baselineZoom);
-                        }}
+                        onClick={handleZoom100}
                         size="sm"
                         variant="outline"
                         className="gap-1"
@@ -1139,12 +1124,7 @@ const Index = () => {
                         100%
                       </Button>
                       <Button
-                        onClick={() => {
-                          const newFitZoom = calculateFitZoom();
-                          setFitZoom(newFitZoom);
-                          setZoom(newFitZoom);
-                          setPanOffset({ x: 0, y: 0 });
-                        }}
+                        onClick={handleZoomFit}
                         size="sm"
                         variant="outline"
                         className="gap-1"
@@ -1261,6 +1241,7 @@ const Index = () => {
                     world={world}
                     onCellClick={isTemplateMode ? handleCellClick : undefined}
                     onCellDrop={isTemplateMode ? handleCellDrop : undefined}
+                    onCellClear={isTemplateMode ? handleCellClear : undefined}
                     selectedObject={isTemplateMode ? selectedObject : undefined}
                     gridColorTheme={gridColorTheme}
                     viewMode={viewMode}

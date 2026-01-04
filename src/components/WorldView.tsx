@@ -1,12 +1,14 @@
 import { World, CellType, Direction, Position } from '@/models/types';
 import { Bug } from 'lucide-react';
 import { DragEvent, useState, useRef, memo, useMemo, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { GridColorTheme, ViewMode, gridColorStyles } from '@/hooks/useSettings';
 
 interface WorldViewProps {
   world: World;
   onCellClick?: (position: Position, isDragPaint?: boolean) => void;
   onCellDrop?: (position: Position, cellType: CellType | 'KARA') => void;
+  onCellClear?: (position: Position) => void;
   selectedObject?: CellType | null | 'KARA';
   gridColorTheme?: GridColorTheme;
   viewMode?: ViewMode;
@@ -187,13 +189,15 @@ const Cell = memo(({
 
 Cell.displayName = 'Cell';
 
-const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTheme = 'green', viewMode = 'normal' }: WorldViewProps) => {
+const WorldView = ({ world, onCellClick, onCellDrop, onCellClear, selectedObject, gridColorTheme = 'green', viewMode = 'normal' }: WorldViewProps) => {
   // Use refs for mouse state to ensure synchronous updates (React state is async)
   const isMouseDownRef = useRef(false);
   const isPaintingRef = useRef(false); // True when we're actively painting (tool selected + mouse down)
   const startPaintCell = useRef<string | null>(null); // The cell where paint operation started
   const lastPaintedCell = useRef<string | null>(null);
   const [draggedElement, setDraggedElement] = useState<{ type: CellType | 'KARA'; from: Position } | null>(null);
+  // Ref to track if mouse-based drag started (for blocking HTML5 drag - state is async)
+  const mouseBasedDragStartedRef = useRef(false);
 
   // Drag line state
   const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -202,13 +206,22 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
   const [dragHoverCell, setDragHoverCell] = useState<Position | null>(null);
 
   // Check if a drop is valid at a given cell
-  const isValidDrop = useCallback((targetCell: Position | null, dragType: CellType | 'KARA' | null): boolean => {
+  const isValidDrop = useCallback((
+    targetCell: Position | null,
+    dragType: CellType | 'KARA' | null,
+    sourceCell?: Position | null
+  ): boolean => {
     if (!targetCell || !dragType) return false;
 
     const { x, y } = targetCell;
 
     // Check bounds
     if (x < 0 || x >= world.width || y < 0 || y >= world.height) return false;
+
+    // Allow dropping back to the source cell (cancels the drag effectively)
+    if (sourceCell && sourceCell.x === x && sourceCell.y === y) {
+      return true;
+    }
 
     const targetCellType = world.grid[y][x].type;
     const isKaraAtTarget = world.character.position.x === x && world.character.position.y === y;
@@ -334,19 +347,25 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
       const cellType = world.grid[y][x].type;
 
       if (isKara) {
+        mouseBasedDragStartedRef.current = true; // Set ref immediately (sync) to block HTML5 drag
         setDraggedElement({ type: 'KARA', from: { x, y } });
         setDragStartPos({ x: e.clientX, y: e.clientY });
         setDragCurrentPos({ x: e.clientX, y: e.clientY });
         setDragHoverCell({ x, y });
         // Stop propagation to prevent panning while dragging elements
         e.stopPropagation();
+        // Prevent default to stop HTML5 drag from starting
+        e.preventDefault();
       } else if (cellType !== CellType.Empty) {
+        mouseBasedDragStartedRef.current = true; // Set ref immediately (sync) to block HTML5 drag
         setDraggedElement({ type: cellType, from: { x, y } });
         setDragStartPos({ x: e.clientX, y: e.clientY });
         setDragCurrentPos({ x: e.clientX, y: e.clientY });
         setDragHoverCell({ x, y });
         // Stop propagation to prevent panning while dragging elements
         e.stopPropagation();
+        // Prevent default to stop HTML5 drag from starting
+        e.preventDefault();
       }
       // If clicking on empty cell with no tool selected, allow panning (don't stop propagation)
     } else if (selectedObject !== undefined) {
@@ -360,13 +379,15 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
 
   const handleMouseUpOnCell = (x: number, y: number) => {
     // If we were dragging an element
-    if (draggedElement && onCellDrop && onCellClick) {
+    if (draggedElement && onCellDrop && onCellClear) {
       const { from, type } = draggedElement;
 
       // Only move if dropped on a different cell and the drop is valid
-      if ((from.x !== x || from.y !== y) && isValidDrop({ x, y }, type)) {
-        // Clear the source cell first (by setting it to empty)
-        onCellClick(from);
+      const isDifferentCell = from.x !== x || from.y !== y;
+
+      if (isDifferentCell && isValidDrop({ x, y }, type, from)) {
+        // Clear the source cell first
+        onCellClear(from);
         // Then place the element at the new location
         onCellDrop({ x, y }, type);
       }
@@ -376,6 +397,7 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
     isPaintingRef.current = false;
     startPaintCell.current = null;
     lastPaintedCell.current = null;
+    mouseBasedDragStartedRef.current = false; // Reset drag ref
     setDraggedElement(null);
     setDragStartPos(null);
     setDragCurrentPos(null);
@@ -387,6 +409,7 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
     isPaintingRef.current = false;
     startPaintCell.current = null;
     lastPaintedCell.current = null;
+    mouseBasedDragStartedRef.current = false; // Reset drag ref
     setDraggedElement(null);
     setDragStartPos(null);
     setDragCurrentPos(null);
@@ -474,7 +497,8 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
     if (selectedObject !== undefined) return; // Only allow dragging when no tool is selected
 
     // If mouse-based drag is active, prevent HTML5 drag from also starting
-    if (draggedElement) {
+    // Use ref (sync) instead of state (async) to avoid race condition
+    if (mouseBasedDragStartedRef.current) {
       e.preventDefault();
       return;
     }
@@ -534,7 +558,7 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
 
   // Calculate if current drop location is valid
   const isDragValid = draggedElement && dragHoverCell
-    ? isValidDrop(dragHoverCell, draggedElement.type)
+    ? isValidDrop(dragHoverCell, draggedElement.type, draggedElement.from)
     : false;
 
   return (
@@ -601,8 +625,8 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
         )}
       </div>
 
-      {/* Drag line SVG overlay */}
-      {draggedElement && dragStartPos && dragCurrentPos && gridContainerRef.current && (
+      {/* Drag line SVG overlay - rendered via portal to escape transform context */}
+      {draggedElement && dragStartPos && dragCurrentPos && gridContainerRef.current && createPortal(
         <svg
           className="fixed inset-0 pointer-events-none z-50"
           style={{ width: '100vw', height: '100vh' }}
@@ -631,7 +655,8 @@ const WorldView = ({ world, onCellClick, onCellDrop, selectedObject, gridColorTh
             r={6}
             fill={isDragValid ? '#22c55e' : '#ef4444'}
           />
-        </svg>
+        </svg>,
+        document.body
       )}
     </div>
   );

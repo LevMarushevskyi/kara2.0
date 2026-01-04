@@ -685,5 +685,42 @@ class MyKara(Kara):
 
       expect(result.error).toBeDefined();
     });
+
+    it('should prevent Reflect access', () => {
+      const code = `
+        void myProgram() {
+          Reflect.get({}, 'key');
+        }
+      `;
+      const world = createTestWorld();
+      const result = executeTextKaraCode(code, 'JavaKara', world);
+
+      expect(result.error).toBeDefined();
+    });
+
+    it('should prevent Proxy access', () => {
+      const code = `
+        void myProgram() {
+          new Proxy({}, {});
+        }
+      `;
+      const world = createTestWorld();
+      const result = executeTextKaraCode(code, 'JavaKara', world);
+
+      expect(result.error).toBeDefined();
+    });
+
+    it('should prevent Promise access', () => {
+      const code = `
+        void myProgram() {
+          Promise.resolve();
+        }
+      `;
+      const world = createTestWorld();
+      const result = executeTextKaraCode(code, 'JavaKara', world);
+
+      expect(result.error).toBeDefined();
+    });
+
   });
 });
