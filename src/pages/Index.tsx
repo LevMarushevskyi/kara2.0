@@ -127,6 +127,7 @@ const Index = () => {
   // Use zoom/pan hook for map navigation
   const {
     zoom,
+    fitZoom,
     setZoom,
     panOffset,
     setPanOffset,
@@ -1371,7 +1372,8 @@ const Index = () => {
 
                   setZoom((prev) => {
                     const newZoom = prev * (delta > 0 ? 0.9 : 1.1);
-                    const clampedZoom = Math.max(0.1, Math.min(5, newZoom));
+                    // Use fitZoom as minimum to prevent zooming out past fit level
+                    const clampedZoom = Math.max(fitZoom, Math.min(5, newZoom));
 
                     // Adjust pan offset to zoom towards cursor
                     const zoomFactor = clampedZoom / prev;

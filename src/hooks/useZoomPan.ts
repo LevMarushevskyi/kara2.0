@@ -91,6 +91,19 @@ export function useZoomPan({
     return () => clearTimeout(timer);
   }, [worldWidth, worldHeight, calculateFitZoom]);
 
+  // Handle window resize - ensure zoom doesn't fall below fitZoom when window grows
+  useEffect(() => {
+    const handleResize = () => {
+      const newFitZoom = calculateFitZoom();
+      setFitZoom(newFitZoom);
+      // If current zoom is below new fitZoom, adjust it up
+      setZoom((prev) => Math.max(prev, newFitZoom));
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [calculateFitZoom]);
+
   const isAtFitZoom = Math.abs(zoom - fitZoom) < 0.01;
 
   const handleZoomIn = useCallback(() => {
@@ -100,8 +113,9 @@ export function useZoomPan({
 
   const handleZoomOut = useCallback(() => {
     const baselineZoom = calculateBaselineZoom();
-    setZoom((prev) => Math.max(prev - baselineZoom * 0.25, baselineZoom * 0.25));
-  }, [calculateBaselineZoom]);
+    const currentFitZoom = calculateFitZoom();
+    setZoom((prev) => Math.max(prev - baselineZoom * 0.25, currentFitZoom));
+  }, [calculateBaselineZoom, calculateFitZoom]);
 
   const handleZoomFit = useCallback(() => {
     const newFitZoom = calculateFitZoom();
