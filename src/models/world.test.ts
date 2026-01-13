@@ -30,10 +30,9 @@ describe('World Model', () => {
       expect(world.character.position.y).toBe(4);
     });
 
-    it('should initialize character facing north with empty inventory', () => {
+    it('should initialize character facing east', () => {
       const world = createWorld(10, 8);
-      expect(world.character.direction).toBe(Direction.North);
-      expect(world.character.inventory).toBe(0);
+      expect(world.character.direction).toBe(Direction.East);
     });
 
     it('should populate world with objects for larger grids', () => {
@@ -67,7 +66,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -85,7 +83,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.East,
-          inventory: 0,
         },
       };
 
@@ -103,7 +100,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 0 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -129,7 +125,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -154,7 +149,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -180,7 +174,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -208,7 +201,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -234,7 +226,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 1 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -258,7 +249,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -276,7 +266,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.West,
-          inventory: 0,
         },
       };
 
@@ -294,7 +283,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -317,7 +305,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -335,7 +322,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.East,
-          inventory: 0,
         },
       };
 
@@ -353,7 +339,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -366,7 +351,7 @@ describe('World Model', () => {
   });
 
   describe('pickClover', () => {
-    it('should pick up clover and increase inventory', () => {
+    it('should pick up clover and remove it from grid', () => {
       const grid = Array(5)
         .fill(null)
         .map(() =>
@@ -383,12 +368,10 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
       const newWorld = pickClover(world);
-      expect(newWorld.character.inventory).toBe(1);
       expect(newWorld.grid[2][2].type).toBe(CellType.Empty);
     });
 
@@ -406,43 +389,16 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
       const newWorld = pickClover(world);
-      expect(newWorld.character.inventory).toBe(0);
       expect(newWorld).toEqual(world);
-    });
-
-    it('should accumulate multiple clovers in inventory', () => {
-      const grid = Array(5)
-        .fill(null)
-        .map(() =>
-          Array(5)
-            .fill(null)
-            .map(() => ({ type: CellType.Empty }))
-        );
-      grid[2][2] = { type: CellType.Clover };
-
-      let world: World = {
-        width: 5,
-        height: 5,
-        grid,
-        character: {
-          position: { x: 2, y: 2 },
-          direction: Direction.North,
-          inventory: 3,
-        },
-      };
-
-      world = pickClover(world);
-      expect(world.character.inventory).toBe(4);
     });
   });
 
   describe('placeClover', () => {
-    it('should place clover and decrease inventory', () => {
+    it('should place clover on empty cell', () => {
       const world: World = {
         width: 5,
         height: 5,
@@ -456,36 +412,11 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 1,
         },
       };
 
       const newWorld = placeClover(world);
-      expect(newWorld.character.inventory).toBe(0);
       expect(newWorld.grid[2][2].type).toBe(CellType.Clover);
-    });
-
-    it('should not place when inventory is empty', () => {
-      const world: World = {
-        width: 5,
-        height: 5,
-        grid: Array(5)
-          .fill(null)
-          .map(() =>
-            Array(5)
-              .fill(null)
-              .map(() => ({ type: CellType.Empty }))
-          ),
-        character: {
-          position: { x: 2, y: 2 },
-          direction: Direction.North,
-          inventory: 0,
-        },
-      };
-
-      const newWorld = placeClover(world);
-      expect(newWorld).toEqual(world);
-      expect(newWorld.grid[2][2].type).toBe(CellType.Empty);
     });
 
     it('should not place when cell is not empty', () => {
@@ -505,13 +436,12 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 1,
         },
       };
 
       const newWorld = placeClover(world);
       expect(newWorld).toEqual(world);
-      expect(newWorld.character.inventory).toBe(1);
+      expect(newWorld.grid[2][2].type).toBe(CellType.Tree);
     });
   });
 
@@ -533,7 +463,6 @@ describe('World Model', () => {
         character: {
           position: { x: 2, y: 2 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -543,7 +472,6 @@ describe('World Model', () => {
 
       // Pick up the clover
       world = pickClover(world);
-      expect(world.character.inventory).toBe(1);
       expect(world.grid[1][2].type).toBe(CellType.Empty);
 
       // Turn right (now facing East)
@@ -554,9 +482,8 @@ describe('World Model', () => {
       world = moveForward(world);
       expect(world.character.position).toEqual({ x: 3, y: 1 });
 
-      // Place clover
+      // Place clover on empty cell
       world = placeClover(world);
-      expect(world.character.inventory).toBe(0);
       expect(world.grid[1][3].type).toBe(CellType.Clover);
     });
   });
@@ -580,8 +507,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeFront(world)).toBe(true);
@@ -604,8 +530,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.East,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeFront(world)).toBe(true);
@@ -625,8 +550,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeFront(world)).toBe(false);
@@ -647,8 +571,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 0 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         // Position wraps to (2, 4) which is empty, so no tree
@@ -673,8 +596,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 0 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         // Position wraps to (2, 4) which has a tree
@@ -698,8 +620,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeFront(world)).toBe(false);
@@ -724,8 +645,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeLeft(world)).toBe(true);
@@ -748,8 +668,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.East,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeLeft(world)).toBe(true);
@@ -769,8 +688,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeLeft(world)).toBe(false);
@@ -791,8 +709,7 @@ describe('World Model', () => {
           character: {
             position: { x: 0, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         // Left of (0,2) facing North wraps to (4, 2) which is empty
@@ -817,8 +734,7 @@ describe('World Model', () => {
           character: {
             position: { x: 0, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         // Left of (0,2) facing North wraps to (4, 2) which has a tree
@@ -844,8 +760,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeRight(world)).toBe(true);
@@ -868,8 +783,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.West,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeRight(world)).toBe(true);
@@ -889,8 +803,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(treeRight(world)).toBe(false);
@@ -911,8 +824,7 @@ describe('World Model', () => {
           character: {
             position: { x: 4, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         // Right of (4,2) facing North wraps to (0, 2) which is empty
@@ -937,8 +849,7 @@ describe('World Model', () => {
           character: {
             position: { x: 4, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         // Right of (4,2) facing North wraps to (0, 2) which has a tree
@@ -964,8 +875,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(mushroomFront(world)).toBe(true);
@@ -985,8 +895,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(mushroomFront(world)).toBe(false);
@@ -1009,8 +918,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(mushroomFront(world)).toBe(false);
@@ -1030,8 +938,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 0 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(mushroomFront(world)).toBe(false);
@@ -1056,8 +963,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(onLeaf(world)).toBe(true);
@@ -1077,8 +983,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(onLeaf(world)).toBe(false);
@@ -1101,8 +1006,7 @@ describe('World Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 0,
-          },
+            },
         };
 
         expect(onLeaf(world)).toBe(false);

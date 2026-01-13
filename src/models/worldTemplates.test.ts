@@ -59,10 +59,6 @@ describe('World Templates - KaraX .world format', () => {
       expect(world.character.direction).toBe(Direction.South);
     });
 
-    it('should initialize inventory to 0', () => {
-      const world = parseWorldFile(sampleWorldXml);
-      expect(world.character.inventory).toBe(0);
-    });
   });
 
   describe('exportWorldToXml', () => {
@@ -76,7 +72,6 @@ describe('World Templates - KaraX .world format', () => {
         character: {
           position: { x: 2, y: 1 },
           direction: Direction.East,
-          inventory: 0,
         },
       };
 
@@ -95,7 +90,6 @@ describe('World Templates - KaraX .world format', () => {
         character: {
           position: { x: 2, y: 1 },
           direction: Direction.East, // direction 1
-          inventory: 0,
         },
       };
 
@@ -122,7 +116,6 @@ describe('World Templates - KaraX .world format', () => {
         character: {
           position: { x: 0, y: 0 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -148,7 +141,6 @@ describe('World Templates - KaraX .world format', () => {
         character: {
           position: { x: 0, y: 0 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -174,7 +166,6 @@ describe('World Templates - KaraX .world format', () => {
         character: {
           position: { x: 0, y: 0 },
           direction: Direction.North,
-          inventory: 0,
         },
       };
 
@@ -199,7 +190,6 @@ describe('World Templates - KaraX .world format', () => {
         character: {
           position: { x: 3, y: 2 },
           direction: Direction.West,
-          inventory: 0,
         },
       };
 
@@ -256,7 +246,6 @@ describe('World Templates - KaraX .world format', () => {
         character: {
           position: { x: 2, y: 1 },
           direction: Direction.North,
-          inventory: 0,
         },
       });
 

@@ -26,7 +26,6 @@ function createTestWorld(width = 5, height = 5): World {
     character: {
       position: { x: 2, y: 2 },
       direction: Direction.North,
-      inventory: 0,
     },
   };
 }
@@ -186,12 +185,10 @@ class MyKara(Kara):
 
       expect(result.error).toBeUndefined();
       expect(result.world.grid[2][2].type).toBe(CellType.Empty);
-      expect(result.world.character.inventory).toBe(1);
     });
 
     it('should handle putLeaf command', () => {
       const world = createTestWorld();
-      world.character.inventory = 1;
 
       const code = `
         void myProgram() {
@@ -202,7 +199,6 @@ class MyKara(Kara):
 
       expect(result.error).toBeUndefined();
       expect(result.world.grid[2][2].type).toBe(CellType.Clover);
-      expect(result.world.character.inventory).toBe(0);
     });
 
     it('should return error when trying to move into tree', () => {
@@ -235,9 +231,10 @@ class MyKara(Kara):
       expect(result.stopped).toBe(true);
     });
 
-    it('should return error for putLeaf when inventory empty', () => {
+    it('should return error for putLeaf when cell not empty', () => {
       const world = createTestWorld();
-      world.character.inventory = 0;
+      // Place a clover at character position so cell is not empty
+      world.grid[2][2] = { type: CellType.Clover };
 
       const code = `
         void myProgram() {
@@ -246,7 +243,7 @@ class MyKara(Kara):
       `;
       const result = executeTextKaraCode(code, 'JavaKara', world);
 
-      expect(result.error).toContain('inventory');
+      expect(result.error).toContain('not empty');
       expect(result.stopped).toBe(true);
     });
 
@@ -333,7 +330,6 @@ class MyKara(Kara):
 
     it('should execute putLeaf command', () => {
       const world = createTestWorld();
-      world.character.inventory = 1;
       const result = executeSingleCommand('putLeaf', world);
 
       expect(result.error).toBeUndefined();
@@ -347,7 +343,6 @@ class MyKara(Kara):
 
       expect(result.error).toBeUndefined();
       expect(result.world.grid[2][2].type).toBe(CellType.Empty);
-      expect(result.world.character.inventory).toBe(1);
     });
 
     it('should return error when move is blocked', () => {

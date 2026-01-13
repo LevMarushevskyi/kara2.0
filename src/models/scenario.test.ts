@@ -44,7 +44,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 1, y: 1 },
             direction: Direction.North,
-            inventory: 3,
           },
         };
 
@@ -69,7 +68,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 0, y: 0 },
             direction: Direction.North,
-            inventory: 0,
           },
         };
 
@@ -94,7 +92,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 3, y: 2 },
             direction: Direction.North,
-            inventory: 0,
           },
         };
 
@@ -112,7 +109,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 1, y: 1 },
             direction: Direction.North,
-            inventory: 0,
           },
         };
 
@@ -143,7 +139,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 1, y: 1 },
             direction: Direction.North,
-            inventory: 5,
           },
         };
 
@@ -168,7 +163,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 1, y: 1 },
             direction: Direction.North,
-            inventory: 0,
           },
         };
 
@@ -192,7 +186,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North,
-            inventory: 3,
           },
         };
 
@@ -219,7 +212,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 0, y: 0 },
             direction: Direction.North,
-            inventory: 0,
           },
         };
 
@@ -243,7 +235,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 0, y: 0 },
             direction: Direction.North,
-            inventory: 1,
           },
         };
 
@@ -252,8 +243,8 @@ describe('Scenario Model', () => {
       });
     });
 
-    describe('inventoryEquals', () => {
-      it('should return true when inventory matches count', () => {
+    describe('noCloversOnGrid', () => {
+      it('should return true when no clovers on grid', () => {
         const world: World = {
           width: 3,
           height: 3,
@@ -263,40 +254,40 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 1, y: 1 },
             direction: Direction.North,
-            inventory: 5,
           },
         };
 
-        const condition = goalConditions.inventoryEquals(5);
+        const condition = goalConditions.noCloversOnGrid();
         expect(condition.check(world)).toBe(true);
       });
 
-      it('should return false when inventory does not match', () => {
+      it('should return false when clovers remain on grid', () => {
+        const grid = Array(3)
+          .fill(null)
+          .map(() =>
+            Array(3)
+              .fill(null)
+              .map(() => ({ type: CellType.Empty }))
+          );
+        grid[1][1] = { type: CellType.Clover };
+
         const world: World = {
           width: 3,
           height: 3,
-          grid: Array(3)
-            .fill(null)
-            .map(() => Array(3).fill({ type: CellType.Empty })),
+          grid,
           character: {
-            position: { x: 1, y: 1 },
+            position: { x: 0, y: 0 },
             direction: Direction.North,
-            inventory: 3,
           },
         };
 
-        const condition = goalConditions.inventoryEquals(5);
+        const condition = goalConditions.noCloversOnGrid();
         expect(condition.check(world)).toBe(false);
       });
 
-      it('should have correct description for single clover', () => {
-        const condition = goalConditions.inventoryEquals(1);
-        expect(condition.description).toBe('Have exactly 1 clover in inventory');
-      });
-
-      it('should have correct description for multiple clovers', () => {
-        const condition = goalConditions.inventoryEquals(5);
-        expect(condition.description).toBe('Have exactly 5 clovers in inventory');
+      it('should have correct description', () => {
+        const condition = goalConditions.noCloversOnGrid();
+        expect(condition.description).toBe('Collect all clovers from the grid');
       });
     });
 
@@ -311,7 +302,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 1, y: 1 },
             direction: Direction.South,
-            inventory: 0,
           },
         };
 
@@ -329,7 +319,6 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 1, y: 1 },
             direction: Direction.North,
-            inventory: 0,
           },
         };
 
@@ -349,14 +338,13 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.East,
-            inventory: 3,
           },
         };
 
         const condition = goalConditions.combined(
           goalConditions.reachPosition(2, 2),
           goalConditions.facingDirection(Direction.East),
-          goalConditions.inventoryEquals(3)
+          goalConditions.noCloversOnGrid()
         );
 
         expect(condition.check(world)).toBe(true);
@@ -372,14 +360,13 @@ describe('Scenario Model', () => {
           character: {
             position: { x: 2, y: 2 },
             direction: Direction.North, // Wrong direction
-            inventory: 3,
           },
         };
 
         const condition = goalConditions.combined(
           goalConditions.reachPosition(2, 2),
           goalConditions.facingDirection(Direction.East),
-          goalConditions.inventoryEquals(3)
+          goalConditions.noCloversOnGrid()
         );
 
         expect(condition.check(world)).toBe(false);
@@ -388,11 +375,11 @@ describe('Scenario Model', () => {
       it('should combine descriptions correctly', () => {
         const condition = goalConditions.combined(
           goalConditions.reachPosition(2, 2),
-          goalConditions.inventoryEquals(3)
+          goalConditions.noCloversOnGrid()
         );
 
         expect(condition.description).toBe(
-          'Reach position (2, 2) AND Have exactly 3 clovers in inventory'
+          'Reach position (2, 2) AND Collect all clovers from the grid'
         );
       });
     });

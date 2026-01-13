@@ -108,9 +108,7 @@ class KaraAPI {
     }
     const newWorld = placeClover(this.ctx.world);
     if (newWorld === this.ctx.world) {
-      this.ctx.error = this.ctx.world.character.inventory === 0
-        ? 'No clovers in inventory!'
-        : 'Cannot place clover here!';
+      this.ctx.error = 'Cannot place clover here - cell is not empty!';
       this.ctx.stopped = true;
       return;
     }
@@ -1248,9 +1246,7 @@ export function executeSingleCommand(
     case 'put_leaf':
       newWorld = placeClover(world);
       if (newWorld === world) {
-        error = world.character.inventory === 0
-          ? 'No clovers in inventory!'
-          : 'Cannot place clover here!';
+        error = 'Cannot place clover here - cell is not empty!';
       }
       break;
     case 'removeLeaf':

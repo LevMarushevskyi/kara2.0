@@ -26,7 +26,6 @@ export interface Position {
 export interface Character {
   position: Position;
   direction: Direction;
-  inventory: number; // Number of clovers held
 }
 
 export interface World {

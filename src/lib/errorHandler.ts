@@ -39,7 +39,7 @@ export const ErrorCodes = {
   WORLD_INVALID_SIZE: 'WORLD_INVALID_SIZE',
   WORLD_INVALID_STATE: 'WORLD_INVALID_STATE',
   WORLD_NO_CLOVER: 'WORLD_NO_CLOVER',
-  WORLD_NO_INVENTORY: 'WORLD_NO_INVENTORY',
+  WORLD_CELL_NOT_EMPTY: 'WORLD_CELL_NOT_EMPTY',
 
   // FSM errors
   FSM_INVALID_STATE: 'FSM_INVALID_STATE',
@@ -124,9 +124,9 @@ const errorDefinitions: Record<ErrorCode, Omit<AppError, 'code' | 'context'>> = 
     severity: ErrorSeverity.WARNING,
     recoverable: true,
   },
-  WORLD_NO_INVENTORY: {
-    message: 'No clovers in inventory',
-    userMessage: 'Kara doesn\'t have any clovers to place!',
+  WORLD_CELL_NOT_EMPTY: {
+    message: 'Cell is not empty',
+    userMessage: 'Kara cannot place a clover here - the cell is not empty!',
     severity: ErrorSeverity.WARNING,
     recoverable: true,
   },

@@ -110,7 +110,7 @@ const Index = () => {
   const [program, setProgram] = useState<CommandType[]>([]);
   const [currentStep, setCurrentStep] = useState(-1);
   const [isRunning, setIsRunning] = useState(false);
-  const [executionSpeed, setExecutionSpeed] = useState(500);
+  const [executionSpeed, setExecutionSpeed] = useState(1000);
   const [selectedObject, setSelectedObject] = useState<CellType | null | 'KARA' | undefined>(undefined);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
   const [showExerciseComplete, setShowExerciseComplete] = useState(false);
@@ -299,11 +299,7 @@ const Index = () => {
         case CommandType.PlaceClover:
           newWorld = placeClover(prevWorld);
           if (newWorld === prevWorld) {
-            if (prevWorld.character.inventory === 0) {
-              toast.error('No clovers in inventory!');
-            } else {
-              toast.error('Cannot place clover here!');
-            }
+            toast.error('Cannot place clover here - cell is not empty!');
           } else {
             toast.success('Placed clover! 🍀');
           }
@@ -956,11 +952,11 @@ const Index = () => {
     const timer = setTimeout(() => {
       setFsmPhase('on-state');
       setFsmStepTrigger(prev => prev + 1); // Trigger next execution
-    }, Math.min(executionSpeed / 2, 200)); // Brief arrow display
+    }, executionSpeed);
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFsmRunning, fsmStepTrigger, executionSpeed, fsmStepCount]);
+  }, [isFsmRunning, fsmStepTrigger, executionSpeed]);
 
   // Text-based code auto-execution (streaming interpreter)
   useEffect(() => {
@@ -1335,10 +1331,10 @@ const Index = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">Slow</span>
                       <Slider
-                        value={[1000 - executionSpeed]}
-                        onValueChange={(value) => setExecutionSpeed(1000 - value[0])}
-                        min={200}
-                        max={900}
+                        value={[2100 - executionSpeed]}
+                        onValueChange={(value) => setExecutionSpeed(2100 - value[0])}
+                        min={100}
+                        max={2000}
                         step={100}
                         className="flex-1"
                         aria-labelledby="speed-label-left"
@@ -1459,10 +1455,6 @@ const Index = () => {
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Facing:</span>
                       <span className="font-medium">{world.character.direction}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Inventory:</span>
-                      <span className="font-medium text-accent">🍀 {world.character.inventory}</span>
                     </div>
                   </div>
                 </Card>
@@ -1611,10 +1603,10 @@ const Index = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">Slow</span>
                       <Slider
-                        value={[1000 - executionSpeed]}
-                        onValueChange={(value) => setExecutionSpeed(1000 - value[0])}
-                        min={200}
-                        max={900}
+                        value={[2100 - executionSpeed]}
+                        onValueChange={(value) => setExecutionSpeed(2100 - value[0])}
+                        min={100}
+                        max={2000}
                         step={100}
                         className="flex-1"
                         aria-labelledby="speed-label-right"

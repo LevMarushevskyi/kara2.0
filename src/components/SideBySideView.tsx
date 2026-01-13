@@ -354,10 +354,10 @@ const SideBySideView = ({
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Slow</span>
               <Slider
-                value={[1000 - executionSpeed]}
-                onValueChange={(value) => onExecutionSpeedChange(1000 - value[0])}
-                min={200}
-                max={900}
+                value={[2100 - executionSpeed]}
+                onValueChange={(value) => onExecutionSpeedChange(2100 - value[0])}
+                min={100}
+                max={2000}
                 step={100}
                 className="flex-1"
               />
@@ -580,24 +580,40 @@ const FSMReadOnlyView = ({
                       transitionFromState === state.id &&
                       transitionToState === targetId;
 
-                    const loopSize = 40;
-                    const startX = stateX;
-                    const startY = stateY - sourceRadius;
-                    const controlX = stateX;
-                    const controlY = stateY - sourceRadius - loopSize;
-                    const endX = stateX + 15;
-                    const endY = stateY - sourceRadius + 5;
+                    // Create a smooth circular self-loop using cubic bezier
+                    const loopSize = 30;
+                    const startAngle = -Math.PI / 2 - 0.5;
+                    const endAngle = -Math.PI / 2 + 0.5;
+                    const startX = stateX + sourceRadius * Math.cos(startAngle);
+                    const startY = stateY + sourceRadius * Math.sin(startAngle);
+                    const endX = stateX + sourceRadius * Math.cos(endAngle);
+                    const endY = stateY + sourceRadius * Math.sin(endAngle);
+
+                    // Control points for a smooth arc
+                    const ctrl1X = startX - loopSize * 0.5;
+                    const ctrl1Y = startY - loopSize;
+                    const ctrl2X = endX + loopSize * 0.5;
+                    const ctrl2Y = endY - loopSize;
+
+                    // Calculate arrowhead direction from the curve's end tangent
+                    const arrowAngle = Math.atan2(endY - ctrl2Y, endX - ctrl2X);
+                    const arrowSize = 6;
 
                     arrows.push(
-                      <path
-                        key={`${state.id}-${targetId}`}
-                        d={`M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`}
-                        fill="none"
-                        stroke={isArrowHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
-                        strokeWidth={isArrowHighlighted ? 3 : 2}
-                        className={isArrowHighlighted ? '' : 'text-foreground'}
-                        markerEnd={isArrowHighlighted ? 'url(#arrowhead-active)' : 'url(#arrowhead-readonly)'}
-                      />
+                      <g key={`${state.id}-${targetId}`}>
+                        <path
+                          d={`M ${startX} ${startY} C ${ctrl1X} ${ctrl1Y}, ${ctrl2X} ${ctrl2Y}, ${endX} ${endY}`}
+                          fill="none"
+                          stroke={isArrowHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
+                          strokeWidth={isArrowHighlighted ? 3 : 2}
+                          className={isArrowHighlighted ? '' : 'text-foreground'}
+                        />
+                        <polygon
+                          points={`${endX},${endY} ${endX - arrowSize * Math.cos(arrowAngle - 0.5)},${endY - arrowSize * Math.sin(arrowAngle - 0.5)} ${endX - arrowSize * Math.cos(arrowAngle + 0.5)},${endY - arrowSize * Math.sin(arrowAngle + 0.5)}`}
+                          fill={isArrowHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
+                          className={isArrowHighlighted ? '' : 'text-foreground'}
+                        />
+                      </g>
                     );
                     return;
                   }

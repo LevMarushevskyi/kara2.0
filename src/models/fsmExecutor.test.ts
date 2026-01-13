@@ -20,7 +20,6 @@ function createTestWorld(width = 5, height = 5): World {
     character: {
       position: { x: 2, y: 2 },
       direction: Direction.North,
-      inventory: 0,
     },
   };
 }
@@ -324,7 +323,6 @@ describe('FSMExecutor', () => {
 
       const result = executeFSMStep(world, program, 'start');
       expect(result.error).toBeUndefined();
-      expect(result.world.character.inventory).toBe(1);
       expect(result.world.grid[2][2].type).toBe(CellType.Empty);
     });
 
@@ -418,9 +416,10 @@ describe('FSMExecutor', () => {
       expect(result.error).toContain('no clover');
     });
 
-    it('should return error when placeClover fails (empty inventory)', () => {
+    it('should return error when placeClover fails (cell not empty)', () => {
       const world = createTestWorld();
-      world.character.inventory = 0;
+      // Place a clover on the cell where Kara is standing
+      world.grid[2][2] = { type: CellType.Clover };
 
       const program: FSMProgram = {
         states: [
@@ -460,7 +459,7 @@ describe('FSMExecutor', () => {
       const result = executeFSMStep(world, program, 'start');
       expect(result.stopped).toBe(true);
       expect(result.error).toContain('cannot place');
-      expect(result.error).toContain('inventory');
+      expect(result.error).toContain('not empty');
     });
 
     it('should handle null program gracefully', () => {

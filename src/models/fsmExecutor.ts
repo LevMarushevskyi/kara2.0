@@ -204,16 +204,13 @@ export function executeFSMStep(
           error: `Kara cannot pick up a clover - there's no clover here! Make sure the "on leaf?" condition is "yes" before picking up.`,
         };
       }
-      // placeClover can fail if inventory empty or cell not empty
+      // placeClover can only fail if cell not empty
       if (action.type === 'placeClover') {
-        const inventoryEmpty = world.character.inventory === 0;
         return {
           world: newWorld,
           nextStateId: currentStateId,
           stopped: true,
-          error: inventoryEmpty
-            ? `Kara cannot place a clover - the inventory is empty! Pick up some clovers first.`
-            : `Kara cannot place a clover here - the cell is not empty!`,
+          error: `Kara cannot place a clover here - the cell is not empty!`,
         };
       }
     }

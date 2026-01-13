@@ -105,7 +105,6 @@ export function parseWorldFile(xmlContent: string): World {
     character: {
       position: { x: characterX, y: characterY },
       direction: characterDirection,
-      inventory: 0,
     },
   };
 }
@@ -230,8 +229,7 @@ export function createEmptyTemplate(width: number = 8, height: number = 6): Worl
     grid,
     character: {
       position: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
-      direction: Direction.North,
-      inventory: 0,
+      direction: Direction.East,
     },
   };
 }
@@ -281,7 +279,6 @@ export function createMazeTemplate(): World {
     character: {
       position: { x: 1, y: 1 },
       direction: Direction.East,
-      inventory: 0,
     },
   };
 }
@@ -321,8 +318,7 @@ export function createGardenTemplate(): World {
     grid,
     character: {
       position: { x: Math.floor(width / 2), y: Math.floor(height / 2) },
-      direction: Direction.North,
-      inventory: 0,
+      direction: Direction.East,
     },
   };
 }
@@ -370,7 +366,6 @@ export function createObstacleCourseTemplate(): World {
     character: {
       position: { x: 0, y: 0 },
       direction: Direction.East,
-      inventory: 0,
     },
   };
 }
@@ -561,14 +556,6 @@ export function isValidWorld(data: unknown): data is World {
 
   // Validate direction
   if (!isValidDirection(character.direction)) {
-    return false;
-  }
-
-  // Validate inventory
-  if (typeof character.inventory !== 'number' ||
-      !Number.isFinite(character.inventory) ||
-      character.inventory < 0 ||
-      !Number.isInteger(character.inventory)) {
     return false;
   }
 

@@ -5,10 +5,10 @@ import { Play, Pause, SkipForward, Square, FastForward } from 'lucide-react';
 
 // Speed presets in milliseconds (delay between steps)
 const SPEED_PRESETS = {
-  slow: { label: 'Slow', value: 1000, icon: '🐢' },
-  normal: { label: 'Normal', value: 500, icon: '🚶' },
-  fast: { label: 'Fast', value: 200, icon: '🏃' },
-  instant: { label: 'Instant', value: 50, icon: '⚡' },
+  slow: { label: 'Slow', value: 2000 },
+  normal: { label: 'Normal', value: 1000 },
+  fast: { label: 'Fast', value: 400 },
+  instant: { label: 'Instant', value: 100 },
 } as const;
 
 type SpeedPreset = keyof typeof SPEED_PRESETS;
@@ -23,10 +23,10 @@ const getActivePreset = (speed: number): SpeedPreset | null => {
 
 // Helper to get speed description
 const getSpeedDescription = (speed: number): string => {
-  if (speed >= 900) return 'Very Slow';
-  if (speed >= 700) return 'Slow';
-  if (speed >= 400) return 'Normal';
-  if (speed >= 150) return 'Fast';
+  if (speed >= 1800) return 'Very Slow';
+  if (speed >= 1200) return 'Slow';
+  if (speed >= 600) return 'Normal';
+  if (speed >= 250) return 'Fast';
   return 'Instant';
 };
 
@@ -191,12 +191,11 @@ const ExecutionControlPanel = ({
                   size="sm"
                   onClick={() => onExecutionSpeedChange(preset.value)}
                   className={`
-                    flex flex-col items-center gap-0.5 h-auto py-2 px-1
+                    h-auto py-2 px-2
                     ${isActive ? 'ring-2 ring-offset-1 ring-primary' : ''}
                   `}
                   title={`${preset.label} speed (${preset.value}ms delay)`}
                 >
-                  <span className={compact ? 'text-sm' : 'text-base'}>{preset.icon}</span>
                   <span className="text-[10px] font-medium">{preset.label}</span>
                 </Button>
               );
@@ -213,16 +212,16 @@ const ExecutionControlPanel = ({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">🐢</span>
+            <span className="text-[10px] text-muted-foreground">Slow</span>
             <Slider
-              value={[1000 - executionSpeed]}
-              onValueChange={(value) => onExecutionSpeedChange(1000 - value[0])}
-              min={0}
-              max={950}
-              step={50}
+              value={[2100 - executionSpeed]}
+              onValueChange={(value) => onExecutionSpeedChange(2100 - value[0])}
+              min={100}
+              max={2000}
+              step={100}
               className="flex-1"
             />
-            <span className="text-xs text-muted-foreground">⚡</span>
+            <span className="text-[10px] text-muted-foreground">Fast</span>
           </div>
         </div>
       </div>

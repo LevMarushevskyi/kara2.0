@@ -31,7 +31,6 @@ export const scenarios: Scenario[] = [
       character: {
         position: { x: 2, y: 4 },
         direction: Direction.North,
-        inventory: 0,
       },
     },
     allowedCommands: [CommandType.MoveForward],
@@ -55,7 +54,6 @@ export const scenarios: Scenario[] = [
       character: {
         position: { x: 2, y: 2 },
         direction: Direction.North,
-        inventory: 0,
       },
     },
     allowedCommands: [CommandType.MoveForward, CommandType.TurnRight],
@@ -79,11 +77,10 @@ export const scenarios: Scenario[] = [
       character: {
         position: { x: 2, y: 2 },
         direction: Direction.North,
-        inventory: 0,
       },
     },
     allowedCommands: [CommandType.MoveForward, CommandType.PickClover],
-    goalCondition: goalConditions.inventoryEquals(1),
+    goalCondition: goalConditions.noCloversOnGrid(),
     hints: ['Move forward to the clover', 'Then pick it up'],
   },
 
@@ -105,7 +102,6 @@ export const scenarios: Scenario[] = [
       character: {
         position: { x: 1, y: 2 },
         direction: Direction.East,
-        inventory: 0,
       },
     },
     allowedCommands: [CommandType.MoveForward, CommandType.PickClover],
@@ -133,7 +129,6 @@ export const scenarios: Scenario[] = [
       character: {
         position: { x: 2, y: 2 },
         direction: Direction.North,
-        inventory: 0,
       },
     },
     allowedCommands: [CommandType.MoveForward, CommandType.TurnRight, CommandType.PickClover],
@@ -163,7 +158,6 @@ export const scenarios: Scenario[] = [
       character: {
         position: { x: 0, y: 2 },
         direction: Direction.East,
-        inventory: 0,
       },
     },
     allowedCommands: [
@@ -195,7 +189,6 @@ export const scenarios: Scenario[] = [
       character: {
         position: { x: 1, y: 1 },
         direction: Direction.East,
-        inventory: 0,
       },
     },
     allowedCommands: [
@@ -207,7 +200,7 @@ export const scenarios: Scenario[] = [
     ],
     goalCondition: goalConditions.combined(
       goalConditions.reachPosition(4, 4),
-      goalConditions.inventoryEquals(0),
+      goalConditions.noCloversOnGrid(),
       goalConditions.placeCloverAtPosition(4, 4)
     ),
     hints: [
@@ -237,7 +230,6 @@ export const scenarios: Scenario[] = [
       character: {
         position: { x: 2, y: 2 },
         direction: Direction.East,
-        inventory: 0,
       },
     },
     allowedCommands: [

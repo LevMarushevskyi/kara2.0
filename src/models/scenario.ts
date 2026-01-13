@@ -54,11 +54,18 @@ export const goalConditions = {
     description: `Place a clover at position (${targetX}, ${targetY})`,
   }),
 
-  inventoryEquals: (count: number): GoalCondition => ({
+  noCloversOnGrid: (): GoalCondition => ({
     check: (world: World) => {
-      return world.character.inventory === count;
+      for (const row of world.grid) {
+        for (const cell of row) {
+          if (cell.type === CellType.Clover) {
+            return false;
+          }
+        }
+      }
+      return true;
     },
-    description: `Have exactly ${count} clover${count !== 1 ? 's' : ''} in inventory`,
+    description: 'Collect all clovers from the grid',
   }),
 
   facingDirection: (direction: Direction): GoalCondition => ({
