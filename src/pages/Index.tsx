@@ -10,6 +10,8 @@ import Tutorial from '@/components/Tutorial';
 import RepeatPatternDialog from '@/components/RepeatPatternDialog';
 import FSMEditor from '@/components/FSMEditor';
 import CodeEditor from '@/components/CodeEditor';
+import SideBySideView from '@/components/SideBySideView';
+import ExecutionControlPanel from '@/components/ExecutionControlPanel';
 import { moveForward, turnLeft, turnRight, pickClover, placeClover } from '@/models/world';
 import { World, CellType, Position } from '@/models/types';
 import { CommandType, repeatLastCommands } from '@/models/program';
@@ -20,7 +22,7 @@ import {
   parseFSMContent,
   isValidFSMProgram,
 } from '@/models/fsm';
-import { executeFSMStep, validateFSMProgram } from '@/models/fsmExecutor';
+import { executeFSMStep, validateFSMProgram, findMatchingTransition } from '@/models/fsmExecutor';
 import { Scenario, saveProgress } from '@/models/scenario';
 import { scenarios, getScenarioById } from '@/models/scenarios';
 import {
@@ -42,6 +44,7 @@ import {
   executeSingleCommand,
   createStreamingInterpreter,
   getNextStreamingCommand,
+  syncStreamingInterpreterWorld,
   StreamingInterpreterState,
 } from '@/models/textKaraExecutor';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -115,7 +118,7 @@ const Index = () => {
   const [showRepeatDialog, setShowRepeatDialog] = useState(false);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [isTemplateMode, setIsTemplateMode] = useState(true);
-  const [activeTab, setActiveTab] = useState<'map' | 'program'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'program' | 'side-by-side'>('map');
   const [pendingWidth, setPendingWidth] = useState(9);
   const [pendingHeight, setPendingHeight] = useState(9);
   const [isResizingMap, setIsResizingMap] = useState(false);
@@ -149,6 +152,9 @@ const Index = () => {
   const [programmingLanguage, setProgrammingLanguage] = useState<string>('Kara');
   const [fsmProgram, setFsmProgram] = useState<FSMProgram>(createEmptyFSM());
   const [fsmCurrentState, setFsmCurrentState] = useState<string | null>(null);
+  const [fsmCurrentTransition, setFsmCurrentTransition] = useState<string | null>(null);
+  const [fsmPreviousState, setFsmPreviousState] = useState<string | null>(null); // Track where we came from for arrow highlighting
+  const [fsmPhase, setFsmPhase] = useState<'idle' | 'on-state' | 'showing-arrow'>('idle'); // Execution phase for highlighting
   const [isFsmRunning, setIsFsmRunning] = useState(false);
   const [fsmStepTrigger, setFsmStepTrigger] = useState(0); // Counter to trigger re-execution
   const [fsmStepCount, setFsmStepCount] = useState(0); // Step counter for DoS protection
@@ -382,6 +388,145 @@ const Index = () => {
   };
 
   const handleStep = () => {
+    // === FSM (Kara) Mode ===
+    if (programmingLanguage === 'Kara') {
+      // Validate FSM program first
+      const validation = validateFSMProgram(fsmProgram);
+      if (!validation.valid) {
+        toast.error(validation.error || 'FSM program is not valid');
+        announce(`Cannot step: ${validation.error}`, 'assertive');
+        return;
+      }
+
+      // If idle but we have a valid start state, the highlighting should already be set up
+      // by the useEffect. Just execute from the current state (which should be the start state).
+      // This handles the case where highlighting was set up but not yet executed.
+
+      // Phase 2: If on-state, execute the transition, show arrow for 500ms, then advance to next state
+      if (fsmPhase === 'on-state' && fsmCurrentState) {
+        // Execute one FSM step from current state
+        const result = executeFSMStep(world, fsmProgram, fsmCurrentState);
+
+        if (result.error) {
+          toast.error(result.error);
+          announce(result.error, 'assertive');
+          setFsmCurrentState(null);
+          setFsmCurrentTransition(null);
+          setFsmPreviousState(null);
+          setFsmPhase('idle');
+          return;
+        }
+
+        // Update world with execution results
+        setWorld(result.world);
+
+        if (result.stopped) {
+          toast.success('FSM program completed!');
+          announce('FSM program completed');
+          setFsmCurrentState(null);
+          setFsmCurrentTransition(null);
+          setFsmPreviousState(null);
+          setFsmPhase('idle');
+          return;
+        }
+
+        // Show arrow phase: highlight the transition arrow and "Next State" dropdown
+        setFsmPreviousState(fsmCurrentState);
+        setFsmCurrentTransition(result.matchingTransitionId || null);
+        setFsmCurrentState(result.nextStateId);
+        setFsmPhase('showing-arrow');
+
+        const nextStateName = fsmProgram.states.find(s => s.id === result.nextStateId)?.name || result.nextStateId;
+        announce(`Transitioning to: ${nextStateName}`);
+
+        // After 500ms, automatically advance to the next state's on-state phase
+        setTimeout(() => {
+          // Find the matching transition in the new state (use result.world which has the updated state)
+          const matchingTransitionId = findMatchingTransition(result.world, fsmProgram, result.nextStateId);
+          setFsmPreviousState(result.nextStateId);
+          setFsmCurrentTransition(matchingTransitionId);
+          setFsmPhase('on-state');
+
+          const stateName = fsmProgram.states.find(s => s.id === result.nextStateId)?.name || result.nextStateId;
+          announce(`Entered state: ${stateName}`);
+        }, 500);
+
+        return;
+      }
+
+      // If showing-arrow phase, ignore step presses (auto-transition handles it)
+      if (fsmPhase === 'showing-arrow') {
+        return;
+      }
+
+      return;
+    }
+
+    // === Text-based Language Modes ===
+    if (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage)) {
+      const lang = programmingLanguage as TextKaraLanguage;
+      const code = lang === 'JavaKara' ? javaKaraCode :
+                   lang === 'PythonKara' ? pythonKaraCode :
+                   lang === 'JavaScriptKara' ? jsKaraCode :
+                   rubyKaraCode;
+
+      // Validate the code first
+      const validation = validateTextKaraCode(code, lang);
+      if (!validation.valid) {
+        toast.error(validation.error || 'Code is not valid');
+        announce(`Cannot step: ${validation.error}`, 'assertive');
+        return;
+      }
+
+      // Create interpreter if not exists
+      let interpreter = textKaraInterpreter;
+      if (!interpreter) {
+        const result = createStreamingInterpreter(code, lang, world);
+        if (result.error || !result.interpreter) {
+          toast.error(result.error || 'Failed to create interpreter');
+          announce(`Error: ${result.error}`, 'assertive');
+          return;
+        }
+        interpreter = result.interpreter;
+        setTextKaraInterpreter(interpreter);
+      }
+
+      // Sync interpreter with actual world state
+      syncStreamingInterpreterWorld(interpreter, world);
+
+      // Get next command
+      const nextCmd = getNextStreamingCommand(interpreter);
+
+      if (nextCmd.error) {
+        toast.error(nextCmd.error);
+        announce(nextCmd.error, 'assertive');
+        setTextKaraInterpreter(null);
+        return;
+      }
+
+      if (nextCmd.done || !nextCmd.command) {
+        toast.success('Program completed!');
+        announce('Program completed');
+        setTextKaraInterpreter(null);
+        return;
+      }
+
+      // Execute the command
+      const execResult = executeSingleCommand(nextCmd.command, world);
+
+      if (execResult.error) {
+        toast.error(execResult.error);
+        announce(execResult.error, 'assertive');
+        setTextKaraInterpreter(null);
+        return;
+      }
+
+      setWorld(execResult.world);
+      announce(`Executed: ${nextCmd.command}`);
+      return;
+    }
+
+    // === ScratchKara (Block Programming) Mode ===
     if (program.length === 0) return;
 
     const nextStep = currentStep === -1 ? 0 : currentStep + 1;
@@ -592,6 +737,9 @@ const Index = () => {
   const handleReset = () => {
     setIsFsmRunning(false);
     setFsmCurrentState(null);
+    setFsmCurrentTransition(null);
+    setFsmPreviousState(null);
+    setFsmPhase('idle');
     loadScenario(currentScenario.id);
   };
 
@@ -695,6 +843,26 @@ const Index = () => {
     },
   });
 
+  // Initialize FSM highlighting when in Kara mode with a valid start state
+  // This sets up the start state as highlighted (on-state) so it's ready to execute
+  useEffect(() => {
+    if (programmingLanguage !== 'Kara') return;
+    if (!fsmProgram.startStateId) return;
+    if (isFsmRunning) return; // Don't interfere with auto-run
+    if (fsmPhase !== 'idle') return; // Already initialized
+
+    // Validate the FSM program
+    const validation = validateFSMProgram(fsmProgram);
+    if (!validation.valid) return;
+
+    // Set up the start state as highlighted (ready to execute on first step)
+    const matchingTransitionId = findMatchingTransition(world, fsmProgram, fsmProgram.startStateId);
+    setFsmCurrentState(fsmProgram.startStateId);
+    setFsmPreviousState(null);
+    setFsmCurrentTransition(matchingTransitionId);
+    setFsmPhase('on-state');
+  }, [programmingLanguage, fsmProgram.startStateId, fsmProgram, isFsmRunning, fsmPhase, world]);
+
   // Check goal whenever world changes (both during run and step mode)
   useEffect(() => {
     if (!isTemplateMode && program.length > 0) {
@@ -726,12 +894,19 @@ const Index = () => {
 
   // FSM Auto-execution
   useEffect(() => {
-    if (!isFsmRunning || !fsmCurrentState) return;
+    if (!isFsmRunning) return;
+
+    // Initialize on first run
+    const currentState = fsmCurrentState || fsmProgram.startStateId;
+    if (!currentState) return;
 
     // Check for max step limit (DoS protection)
     if (fsmStepCount >= FSM_MAX_STEPS) {
       setIsFsmRunning(false);
       setFsmCurrentState(null);
+      setFsmCurrentTransition(null);
+      setFsmPreviousState(null);
+      setFsmPhase('idle');
       setFsmStepCount(0);
       toast.error(`Execution limit exceeded (${FSM_MAX_STEPS} steps). Possible infinite loop.`);
       announce(`FSM error: Execution limit exceeded. Possible infinite loop.`, 'assertive');
@@ -739,16 +914,21 @@ const Index = () => {
     }
 
     // Execute one FSM step
-    const result = executeFSMStep(world, fsmProgram, fsmCurrentState);
+    const result = executeFSMStep(world, fsmProgram, currentState);
 
-    // Update the world and step count
+    // Update the world, step count, and transition
     setWorld(result.world);
     setFsmStepCount(prev => prev + 1);
+    setFsmPreviousState(currentState);
+    setFsmCurrentTransition(result.matchingTransitionId || null);
 
     // Check if we hit an error
     if (result.error) {
       setIsFsmRunning(false);
       setFsmCurrentState(null);
+      setFsmCurrentTransition(null);
+      setFsmPreviousState(null);
+      setFsmPhase('idle');
       setFsmStepCount(0);
       toast.error(result.error);
       announce(`FSM error: ${result.error}`, 'assertive');
@@ -759,21 +939,27 @@ const Index = () => {
     if (result.stopped) {
       setIsFsmRunning(false);
       setFsmCurrentState(null);
+      setFsmCurrentTransition(null);
+      setFsmPreviousState(null);
+      setFsmPhase('idle');
       setFsmStepCount(0);
       toast.success('FSM program completed!');
       announce('FSM program completed');
       return;
     }
 
-    // Schedule the next step
+    // Animate: show arrow briefly, then move to next state
+    setFsmPhase('showing-arrow');
+    setFsmCurrentState(result.nextStateId);
+
     const timer = setTimeout(() => {
-      setFsmCurrentState(result.nextStateId);
-      setFsmStepTrigger(prev => prev + 1); // Increment to trigger re-execution even for self-loops
-    }, executionSpeed);
+      setFsmPhase('on-state');
+      setFsmStepTrigger(prev => prev + 1); // Trigger next execution
+    }, Math.min(executionSpeed / 2, 200)); // Brief arrow display
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFsmRunning, fsmCurrentState, fsmStepTrigger, executionSpeed, fsmStepCount]);
+  }, [isFsmRunning, fsmStepTrigger, executionSpeed, fsmStepCount]);
 
   // Text-based code auto-execution (streaming interpreter)
   useEffect(() => {
@@ -980,10 +1166,11 @@ const Index = () => {
 
       {/* Main Content */}
       <main id="main-content" className="container mx-auto px-6 py-6" role="main">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'map' | 'program')} className="h-[calc(100vh-140px)]">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'map' | 'program' | 'side-by-side')} className="h-[calc(100vh-140px)]">
           <TabsList className="mb-4">
             <TabsTrigger value="map">World</TabsTrigger>
             <TabsTrigger value="program">Program</TabsTrigger>
+            <TabsTrigger value="side-by-side">Side-by-Side</TabsTrigger>
           </TabsList>
 
           <TabsContent value="map" className="h-[calc(100%-60px)] mt-0">
@@ -1327,7 +1514,16 @@ const Index = () => {
                     </Button>
                     <Button
                       onClick={handleStep}
-                      disabled={programmingLanguage === 'Kara' || ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) || program.length === 0 || isRunning}
+                      disabled={
+                        isRunning || isFsmRunning || isTextKaraRunning ||
+                        (programmingLanguage === 'ScratchKara' && program.length === 0) ||
+                        (programmingLanguage === 'Kara' && (!fsmProgram.startStateId || fsmPhase === 'showing-arrow')) ||
+                        (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) &&
+                          ((programmingLanguage === 'JavaKara' && !javaKaraCode.trim()) ||
+                           (programmingLanguage === 'PythonKara' && !pythonKaraCode.trim()) ||
+                           (programmingLanguage === 'JavaScriptKara' && !jsKaraCode.trim()) ||
+                           (programmingLanguage === 'RubyKara' && !rubyKaraCode.trim())))
+                      }
                       size="sm"
                       variant="secondary"
                       className="gap-1"
@@ -1344,11 +1540,14 @@ const Index = () => {
                         setIsRunning(false);
                         setIsFsmRunning(false);
                         setFsmCurrentState(null);
+                        setFsmCurrentTransition(null);
+                        setFsmPreviousState(null);
+                        setFsmPhase('idle');
                         setIsTextKaraRunning(false);
                         setTextKaraInterpreter(null);
                         toast.info('Execution ended');
                       }}
-                      disabled={currentStep === -1 && !isRunning && !isFsmRunning && !isTextKaraRunning}
+                      disabled={currentStep === -1 && !isRunning && !isFsmRunning && !isTextKaraRunning && fsmPhase === 'idle'}
                       size="sm"
                       variant="outline"
                       className="gap-1"
@@ -1427,9 +1626,11 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="program" className="h-[calc(100%-60px)] mt-0">
-            <div className="flex flex-col h-full gap-4">
-              {/* Top Panels */}
-              <div className="flex justify-end gap-4 px-4 pt-4">
+            <div className="flex h-full gap-4">
+              {/* Main Programming Area */}
+              <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+                {/* Top Panels */}
+                <div className="flex justify-end gap-4 px-4 pt-4">
                 {/* File Operations Panel */}
                 <Card className="p-3">
                   <div className="flex items-center gap-2">
@@ -1562,7 +1763,15 @@ const Index = () => {
                     aria-label="FSM programming editor"
                     className="w-full h-full max-w-6xl animate-in fade-in slide-in-from-bottom duration-500"
                   >
-                    <FSMEditor program={fsmProgram} onUpdateProgram={setFsmProgram} />
+                    <FSMEditor
+                      program={fsmProgram}
+                      onUpdateProgram={setFsmProgram}
+                      currentExecutingStateId={fsmCurrentState}
+                      currentExecutingTransitionId={fsmCurrentTransition}
+                      previousStateId={fsmPreviousState}
+                      executionPhase={fsmPhase}
+                      isExecuting={isFsmRunning || fsmPhase !== 'idle'}
+                    />
                   </div>
                 ) : ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) ? (
                   <div
@@ -1630,7 +1839,204 @@ const Index = () => {
                   </div>
                 )}
               </div>
+              </div>
+
+              {/* Right Sidebar - Execution Controls */}
+              <aside className="w-72 flex-shrink-0 p-4 border-l border-border overflow-y-auto flex flex-col gap-4">
+                <ExecutionControlPanel
+                  isRunning={isRunning || isFsmRunning || isTextKaraRunning}
+                  executionSpeed={executionSpeed}
+                  onExecutionSpeedChange={setExecutionSpeed}
+                  onRun={handleRun}
+                  onPause={handlePause}
+                  onStep={handleStep}
+                  onEnd={() => {
+                    setCurrentStep(-1);
+                    setIsRunning(false);
+                    setIsFsmRunning(false);
+                    setFsmCurrentState(null);
+                    setFsmCurrentTransition(null);
+                    setFsmPreviousState(null);
+                    setFsmPhase('idle');
+                    setIsTextKaraRunning(false);
+                    setTextKaraInterpreter(null);
+                    toast.info('Execution ended');
+                  }}
+                  onSkip={programmingLanguage === 'ScratchKara' ? () => {
+                    if (program.length === 0) return;
+                    setIsRunning(false);
+                    let tempWorld = world;
+                    for (let i = currentStep + 1; i < program.length; i++) {
+                      const cmd = program[i];
+                      switch (cmd) {
+                        case CommandType.MoveForward:
+                          tempWorld = moveForward(tempWorld);
+                          break;
+                        case CommandType.TurnLeft:
+                          tempWorld = turnLeft(tempWorld);
+                          break;
+                        case CommandType.TurnRight:
+                          tempWorld = turnRight(tempWorld);
+                          break;
+                        case CommandType.PickClover:
+                          tempWorld = pickClover(tempWorld);
+                          break;
+                        case CommandType.PlaceClover:
+                          tempWorld = placeClover(tempWorld);
+                          break;
+                      }
+                    }
+                    setWorld(tempWorld);
+                    setCurrentStep(-1);
+                    toast.success('Skipped to end');
+                  } : undefined}
+                  canRun={
+                    programmingLanguage === 'Kara' ? !!fsmProgram.startStateId :
+                    ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) ? (
+                      (programmingLanguage === 'JavaKara' && !!javaKaraCode.trim()) ||
+                      (programmingLanguage === 'PythonKara' && !!pythonKaraCode.trim()) ||
+                      (programmingLanguage === 'JavaScriptKara' && !!jsKaraCode.trim()) ||
+                      (programmingLanguage === 'RubyKara' && !!rubyKaraCode.trim())
+                    ) :
+                    program.length > 0
+                  }
+                  canStep={
+                    !(isRunning || isFsmRunning || isTextKaraRunning) && (
+                      (programmingLanguage === 'Kara' && !!fsmProgram.startStateId && fsmPhase !== 'showing-arrow') ||
+                      (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) && (
+                        (programmingLanguage === 'JavaKara' && !!javaKaraCode.trim()) ||
+                        (programmingLanguage === 'PythonKara' && !!pythonKaraCode.trim()) ||
+                        (programmingLanguage === 'JavaScriptKara' && !!jsKaraCode.trim()) ||
+                        (programmingLanguage === 'RubyKara' && !!rubyKaraCode.trim())
+                      )) ||
+                      (programmingLanguage === 'ScratchKara' && program.length > 0)
+                    )
+                  }
+                  canEnd={currentStep !== -1 || isRunning || isFsmRunning || isTextKaraRunning}
+                  canSkip={
+                    programmingLanguage === 'ScratchKara' &&
+                    program.length > 0 &&
+                    currentStep < program.length - 1
+                  }
+                />
+
+                {/* World Preview (scaled down view of entire world) */}
+                <Card className="p-3">
+                  <h3 className="text-sm font-semibold mb-2">World Preview</h3>
+                  <div
+                    className="bg-muted/20 rounded-lg border-2 border-border overflow-hidden flex items-center justify-center"
+                    style={{ height: '200px' }}
+                  >
+                    <div style={{ transform: 'scale(0.35)', transformOrigin: 'center' }}>
+                      <WorldView
+                        world={world}
+                        gridColorTheme={gridColorTheme}
+                        viewMode={viewMode}
+                      />
+                    </div>
+                  </div>
+                </Card>
+              </aside>
             </div>
+          </TabsContent>
+
+          <TabsContent value="side-by-side" className="h-[calc(100%-60px)] mt-0">
+            <SideBySideView
+              world={world}
+              gridColorTheme={gridColorTheme}
+              viewMode={viewMode}
+              isRunning={isRunning}
+              isFsmRunning={isFsmRunning}
+              isTextKaraRunning={isTextKaraRunning}
+              executionSpeed={executionSpeed}
+              onExecutionSpeedChange={setExecutionSpeed}
+              onRun={handleRun}
+              onPause={handlePause}
+              onStep={handleStep}
+              onEnd={() => {
+                setCurrentStep(-1);
+                setIsRunning(false);
+                setIsFsmRunning(false);
+                setFsmCurrentState(null);
+                setFsmCurrentTransition(null);
+                setFsmPreviousState(null);
+                setFsmPhase('idle');
+                setIsTextKaraRunning(false);
+                setTextKaraInterpreter(null);
+                toast.info('Execution ended');
+              }}
+              onSkip={() => {
+                if (programmingLanguage === 'ScratchKara' && program.length > 0) {
+                  setIsRunning(false);
+                  let tempWorld = world;
+                  for (let i = currentStep + 1; i < program.length; i++) {
+                    const cmd = program[i];
+                    switch (cmd) {
+                      case CommandType.MoveForward:
+                        tempWorld = moveForward(tempWorld);
+                        break;
+                      case CommandType.TurnLeft:
+                        tempWorld = turnLeft(tempWorld);
+                        break;
+                      case CommandType.TurnRight:
+                        tempWorld = turnRight(tempWorld);
+                        break;
+                      case CommandType.PickClover:
+                        tempWorld = pickClover(tempWorld);
+                        break;
+                      case CommandType.PlaceClover:
+                        tempWorld = placeClover(tempWorld);
+                        break;
+                    }
+                  }
+                  setWorld(tempWorld);
+                  setCurrentStep(-1);
+                  toast.success('Skipped to end');
+                }
+              }}
+              programmingLanguage={programmingLanguage}
+              fsmProgram={fsmProgram}
+              fsmCurrentState={fsmCurrentState}
+              fsmPreviousState={fsmPreviousState}
+              fsmCurrentTransition={fsmCurrentTransition}
+              fsmPhase={fsmPhase}
+              program={program}
+              currentStep={currentStep}
+              textKaraCode={
+                programmingLanguage === 'JavaKara' ? javaKaraCode :
+                programmingLanguage === 'PythonKara' ? pythonKaraCode :
+                programmingLanguage === 'JavaScriptKara' ? jsKaraCode :
+                programmingLanguage === 'RubyKara' ? rubyKaraCode : ''
+              }
+              canRun={
+                programmingLanguage === 'Kara' ? !!fsmProgram.startStateId :
+                ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) ? (
+                  (programmingLanguage === 'JavaKara' && !!javaKaraCode.trim()) ||
+                  (programmingLanguage === 'PythonKara' && !!pythonKaraCode.trim()) ||
+                  (programmingLanguage === 'JavaScriptKara' && !!jsKaraCode.trim()) ||
+                  (programmingLanguage === 'RubyKara' && !!rubyKaraCode.trim())
+                ) :
+                program.length > 0
+              }
+              canStep={
+                !isRunning && !isFsmRunning && !isTextKaraRunning && (
+                  (programmingLanguage === 'Kara' && !!fsmProgram.startStateId && fsmPhase !== 'showing-arrow') ||
+                  (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) && (
+                    (programmingLanguage === 'JavaKara' && !!javaKaraCode.trim()) ||
+                    (programmingLanguage === 'PythonKara' && !!pythonKaraCode.trim()) ||
+                    (programmingLanguage === 'JavaScriptKara' && !!jsKaraCode.trim()) ||
+                    (programmingLanguage === 'RubyKara' && !!rubyKaraCode.trim())
+                  )) ||
+                  (programmingLanguage === 'ScratchKara' && program.length > 0)
+                )
+              }
+              canEnd={currentStep !== -1 || isRunning || isFsmRunning || isTextKaraRunning}
+              canSkip={
+                programmingLanguage === 'ScratchKara' &&
+                program.length > 0 &&
+                currentStep < program.length - 1
+              }
+            />
           </TabsContent>
         </Tabs>
       </main>

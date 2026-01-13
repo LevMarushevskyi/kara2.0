@@ -26,7 +26,7 @@ function evaluateDetector(world: World, detector: DetectorType): boolean {
 /**
  * Checks if a transition's detector conditions match the current world state
  */
-function transitionMatches(world: World, transition: FSMTransition): boolean {
+export function transitionMatches(world: World, transition: FSMTransition): boolean {
   // Check all detector conditions
   for (const [detector, expectedValue] of Object.entries(transition.detectorConditions)) {
     const actualValue = evaluateDetector(world, detector as DetectorType);
@@ -43,6 +43,25 @@ function transitionMatches(world: World, transition: FSMTransition): boolean {
   }
 
   return true;
+}
+
+/**
+ * Finds the matching transition for a given state without executing it
+ * Returns the transition ID if found, null otherwise
+ */
+export function findMatchingTransition(
+  world: World,
+  program: FSMProgram,
+  stateId: string
+): string | null {
+  const state = program.states.find((s) => s.id === stateId);
+  if (!state || stateId === program.stopStateId) return null;
+
+  const matchingTransition = state.transitions.find((t) =>
+    transitionMatches(world, t)
+  );
+
+  return matchingTransition?.id || null;
 }
 
 /**
@@ -97,7 +116,7 @@ function getStateName(program: FSMProgram, stateId: string): string {
 
 /**
  * Executes one step of the FSM program
- * Returns: { world, nextStateId, stopped, error }
+ * Returns: { world, nextStateId, stopped, error, matchingTransitionId }
  */
 export function executeFSMStep(
   world: World,
@@ -108,6 +127,7 @@ export function executeFSMStep(
   nextStateId: string;
   stopped: boolean;
   error?: string;
+  matchingTransitionId?: string;
 } {
   // Validate inputs
   if (!program || !program.states || !Array.isArray(program.states)) {
@@ -204,6 +224,7 @@ export function executeFSMStep(
     world: newWorld,
     nextStateId: matchingTransition.targetStateId,
     stopped: matchingTransition.targetStateId === program.stopStateId,
+    matchingTransitionId: matchingTransition.id,
   };
 }
 

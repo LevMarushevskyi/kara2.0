@@ -177,10 +177,12 @@ const ProgramPanel = ({
                   key={index}
                   role="listitem"
                   aria-label={`Command ${index + 1}: ${getCommandLabel(cmd)}${index === currentStep ? ' (currently executing)' : ''}`}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-md border transition-all ${
+                  className={`flex items-center gap-2 px-3 py-2 rounded-md border transition-all duration-200 ${
                     index === currentStep
-                      ? 'bg-accent text-accent-foreground border-accent shadow-md scale-105'
-                      : 'bg-card border-border hover:border-accent/30'
+                      ? 'bg-green-500/20 border-green-500 ring-2 ring-green-500/30 scale-[1.02] shadow-md'
+                      : index < currentStep && currentStep !== -1
+                        ? 'bg-card border-border opacity-50'
+                        : 'bg-card border-border hover:border-accent/30'
                   }`}
                 >
                   <span className="text-xs text-muted-foreground font-mono w-5">{index + 1}.</span>
@@ -188,15 +190,22 @@ const ProgramPanel = ({
                     {getCommandIcon(cmd)}
                     {getCommandLabel(cmd)}
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onRemoveCommand(index)}
-                    className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
-                    aria-label={`Remove ${getCommandLabel(cmd)} command`}
-                  >
-                    ×
-                  </Button>
+                  {index === currentStep && (
+                    <span className="text-xs text-green-600 dark:text-green-400 font-medium animate-pulse">
+                      ▶ Executing
+                    </span>
+                  )}
+                  {index !== currentStep && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onRemoveCommand(index)}
+                      className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
+                      aria-label={`Remove ${getCommandLabel(cmd)} command`}
+                    >
+                      ×
+                    </Button>
+                  )}
                 </div>
               ))
             )}

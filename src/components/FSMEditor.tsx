@@ -5,28 +5,53 @@ import {
   FSMProgram,
   FSMState,
   DetectorType,
-  downloadFSMAsKaraX,
-  parseFSMContent,
-  isValidFSMProgram,
 } from '@/models/fsm';
-import { Plus, Play, Trash2, Download, Upload } from 'lucide-react';
+import { Plus, Play, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
+
+// Execution phase type for FSM visualization
+type FSMExecutionPhase = 'idle' | 'on-state' | 'transition-arrow';
 
 interface FSMEditorProps {
   program: FSMProgram;
   onUpdateProgram: (program: FSMProgram) => void;
+  // Execution highlighting props
+  currentExecutingStateId?: string | null;
+  currentExecutingTransitionId?: string | null;
+  previousStateId?: string | null; // For arrow highlighting - where we came from
+  executionPhase?: 'idle' | 'on-state' | 'showing-arrow'; // Phase controlled by parent
+  isExecuting?: boolean;
 }
 
 type ActionType = 'move' | 'turnLeft' | 'turnRight' | 'pickClover' | 'placeClover';
 
-const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
+const FSMEditor = ({
+  program,
+  onUpdateProgram,
+  currentExecutingStateId = null,
+  currentExecutingTransitionId = null,
+  previousStateId: parentPreviousStateId = null,
+  executionPhase: parentExecutionPhase = 'idle',
+  isExecuting = false,
+}: FSMEditorProps) => {
   const [selectedStateId, setSelectedStateId] = useState<string>(
     program.states.find((s) => s.id !== program.stopStateId)?.id || program.stopStateId
   );
   const [draggingStateId, setDraggingStateId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
+  // Derive execution phase and highlighting from parent-controlled state
+  // Map parent phase to internal FSMExecutionPhase for rendering
+  const executionPhase: FSMExecutionPhase = parentExecutionPhase === 'showing-arrow' ? 'transition-arrow' :
+                                             parentExecutionPhase === 'on-state' ? 'on-state' : 'idle';
+
+  // Determine what should be highlighted based on parent-controlled phase
+  // When 'on-state': highlight the current state
+  // When 'showing-arrow': highlight the arrow from previous to current state
+  const highlightedStateId = parentExecutionPhase === 'on-state' ? currentExecutingStateId : null;
+  const transitionFromState = parentExecutionPhase === 'showing-arrow' ? parentPreviousStateId : null;
+  const transitionToState = parentExecutionPhase === 'showing-arrow' ? currentExecutingStateId : null;
 
   const editableStates = program.states.filter((s) => s.id !== program.stopStateId);
 
@@ -80,46 +105,6 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
       const nextState = editableStates.find((s) => s.id !== selectedStateId);
       setSelectedStateId(nextState?.id || program.stopStateId);
     }
-  };
-
-  const handleExportFSM = () => {
-    downloadFSMAsKaraX(program, 'kara-fsm-program.kara');
-    toast.success('FSM program exported successfully!');
-  };
-
-  const handleImportFSM = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.kara,.json';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const content = event.target?.result as string;
-          const importedProgram = parseFSMContent(content);
-          if (isValidFSMProgram(importedProgram)) {
-            onUpdateProgram(importedProgram);
-            // Select first editable state
-            const firstEditable = importedProgram.states.find(
-              (s) => s.id !== importedProgram.stopStateId
-            );
-            if (firstEditable) {
-              setSelectedStateId(firstEditable.id);
-            }
-            toast.success('FSM program imported successfully!');
-          } else {
-            toast.error('Invalid FSM program file!');
-          }
-        } catch {
-          toast.error('Failed to import FSM program. Invalid file format.');
-        }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
   };
 
   const handleMouseDown = (e: React.MouseEvent, stateId: string) => {
@@ -391,27 +376,6 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
             <Trash2 className="h-4 w-4" />
             Delete State
           </Button>
-          <div className="flex-1" />
-          <Button
-            onClick={handleExportFSM}
-            size="sm"
-            variant="outline"
-            className="gap-2"
-            title="Export FSM program to .kara file"
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
-          <Button
-            onClick={handleImportFSM}
-            size="sm"
-            variant="outline"
-            className="gap-2"
-            title="Import FSM program from .kara file"
-          >
-            <Upload className="h-4 w-4" />
-            Import
-          </Button>
         </div>
 
         {/* State Diagram Canvas */}
@@ -435,145 +399,235 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
               >
                 <polygon points="0 0, 10 3, 0 6" fill="currentColor" className="text-foreground" />
               </marker>
+              <marker
+                id="arrowhead-active"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="3"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <polygon points="0 0, 10 3, 0 6" fill="rgb(34, 197, 94)" />
+              </marker>
+              {/* Bidirectional arrow markers (start side) */}
+              <marker
+                id="arrowhead-start"
+                markerWidth="10"
+                markerHeight="10"
+                refX="1"
+                refY="3"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <polygon points="10 0, 0 3, 10 6" fill="currentColor" className="text-foreground" />
+              </marker>
+              <marker
+                id="arrowhead-start-active"
+                markerWidth="10"
+                markerHeight="10"
+                refX="1"
+                refY="3"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <polygon points="10 0, 0 3, 10 6" fill="rgb(34, 197, 94)" />
+              </marker>
             </defs>
-            {program.states.map((state) => {
-              const transitions = state.transitions || [];
-              // Get unique target states
-              const uniqueTargets = Array.from(new Set(transitions.map((t) => t.targetStateId)));
+            {(() => {
+              // Helper functions for bidirectional arrow detection
+              const getPairKey = (id1: string, id2: string) => {
+                return [id1, id2].sort().join('|');
+              };
 
-              // Calculate which quadrants are occupied by arrows
-              const isStartState = state.id === program.startStateId;
-              const occupiedAngles: number[] = [];
+              const hasTransition = (fromStateId: string, toStateId: string) => {
+                const fromState = program.states.find((s) => s.id === fromStateId);
+                if (!fromState) return false;
+                return fromState.transitions?.some((t) => t.targetStateId === toStateId) || false;
+              };
 
-              // Start arrow occupies the left side
-              if (isStartState) {
-                occupiedAngles.push(Math.PI); // 180 degrees (left)
-              }
+              // Collect all unique connections (for bidirectional detection)
+              const processedPairs = new Set<string>();
+              const arrows: JSX.Element[] = [];
 
-              // Calculate angles for outgoing arrows
-              uniqueTargets.forEach((targetId) => {
-                if (targetId !== state.id) {
-                  const targetState = program.states.find((s) => s.id === targetId);
-                  if (targetState) {
-                    const angle = Math.atan2(targetState.y - state.y, targetState.x - state.x);
-                    occupiedAngles.push(angle);
-                  }
+              program.states.forEach((state) => {
+                const transitions = state.transitions || [];
+                const uniqueTargets = Array.from(new Set(transitions.map((t) => t.targetStateId)));
+
+                // Calculate which quadrants are occupied by arrows (for self-loop positioning)
+                const isStartState = state.id === program.startStateId;
+                const occupiedAngles: number[] = [];
+
+                if (isStartState) {
+                  occupiedAngles.push(Math.PI);
                 }
-              });
 
-              // Find the best position for the self-loop (opposite side from occupied angles)
-              const findBestLoopPosition = () => {
-                // Possible positions: top (270°), right (0°), bottom (90°), left (180°)
-                const candidates = [
-                  { angle: -Math.PI / 2, name: 'top' },     // -90° (top)
-                  { angle: 0, name: 'right' },              // 0° (right)
-                  { angle: Math.PI / 2, name: 'bottom' },   // 90° (bottom)
-                  { angle: Math.PI, name: 'left' },         // 180° (left)
-                ];
-
-                // Calculate the minimum distance from each candidate to all occupied angles
-                let bestCandidate = candidates[0];
-                let maxMinDistance = -Infinity;
-
-                candidates.forEach((candidate) => {
-                  let minDistance = Infinity;
-                  occupiedAngles.forEach((occupied) => {
-                    // Calculate angular distance (normalized to -π to π)
-                    let diff = candidate.angle - occupied;
-                    while (diff > Math.PI) diff -= 2 * Math.PI;
-                    while (diff < -Math.PI) diff += 2 * Math.PI;
-                    minDistance = Math.min(minDistance, Math.abs(diff));
-                  });
-
-                  if (minDistance > maxMinDistance) {
-                    maxMinDistance = minDistance;
-                    bestCandidate = candidate;
+                uniqueTargets.forEach((targetId) => {
+                  if (targetId !== state.id) {
+                    const targetState = program.states.find((s) => s.id === targetId);
+                    if (targetState) {
+                      const angle = Math.atan2(targetState.y - state.y, targetState.x - state.x);
+                      occupiedAngles.push(angle);
+                    }
                   }
                 });
 
-                return bestCandidate.angle;
-              };
+                const findBestLoopPosition = () => {
+                  const candidates = [
+                    { angle: -Math.PI / 2, name: 'top' },
+                    { angle: 0, name: 'right' },
+                    { angle: Math.PI / 2, name: 'bottom' },
+                    { angle: Math.PI, name: 'left' },
+                  ];
 
-              return uniqueTargets.map((targetId) => {
-                const targetState = program.states.find((s) => s.id === targetId);
-                if (!targetState) return null;
+                  let bestCandidate = candidates[0];
+                  let maxMinDistance = -Infinity;
 
-                const sourceRadius = state.id === program.stopStateId ? 48 : 40;
-                const targetRadius = targetState.id === program.stopStateId ? 48 : 40;
+                  candidates.forEach((candidate) => {
+                    let minDistance = Infinity;
+                    occupiedAngles.forEach((occupied) => {
+                      let diff = candidate.angle - occupied;
+                      while (diff > Math.PI) diff -= 2 * Math.PI;
+                      while (diff < -Math.PI) diff += 2 * Math.PI;
+                      minDistance = Math.min(minDistance, Math.abs(diff));
+                    });
 
-                // Self-loop
-                if (state.id === targetId) {
-                  const loopSize = 40;
-                  const bestPosition = findBestLoopPosition();
+                    if (minDistance > maxMinDistance) {
+                      maxMinDistance = minDistance;
+                      bestCandidate = candidate;
+                    }
+                  });
 
-                  // Calculate start and end angles based on best position
-                  const startAngle = bestPosition - Math.PI / 6; // 30 degrees before
-                  const endAngle = bestPosition + Math.PI / 6;   // 30 degrees after
+                  return bestCandidate.angle;
+                };
 
-                  const startX = state.x + sourceRadius * Math.cos(startAngle);
-                  const startY = state.y + sourceRadius * Math.sin(startAngle);
-                  const endX = state.x + sourceRadius * Math.cos(endAngle);
-                  const endY = state.y + sourceRadius * Math.sin(endAngle);
+                uniqueTargets.forEach((targetId) => {
+                  const targetState = program.states.find((s) => s.id === targetId);
+                  if (!targetState) return;
 
-                  // Control points for a smooth bezier curve (extend outward)
-                  const controlOffset = loopSize;
-                  const control1X = startX + controlOffset * Math.cos(bestPosition);
-                  const control1Y = startY + controlOffset * Math.sin(bestPosition);
-                  const control2X = endX + controlOffset * Math.cos(bestPosition);
-                  const control2Y = endY + controlOffset * Math.sin(bestPosition);
+                  const sourceRadius = state.id === program.stopStateId ? 48 : 40;
+                  const targetRadius = targetState.id === program.stopStateId ? 48 : 40;
 
-                  // Calculate arrowhead angle (tangent at end point)
-                  const arrowAngle = Math.atan2(endY - control2Y, endX - control2X);
-                  const arrowSize = 8;
+                  // Self-loop (always render)
+                  if (state.id === targetId) {
+                    const isArrowHighlighted = executionPhase === 'transition-arrow' &&
+                      transitionFromState === state.id &&
+                      transitionToState === targetId;
 
-                  return (
-                    <g key={`${state.id}-${targetId}`}>
-                      {/* Curved path using cubic bezier */}
-                      <path
-                        d={`M ${startX} ${startY} C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${endX} ${endY}`}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        className="text-foreground"
+                    const loopSize = 40;
+                    const bestPosition = findBestLoopPosition();
+                    const startAngle = bestPosition - Math.PI / 6;
+                    const endAngle = bestPosition + Math.PI / 6;
+
+                    const startX = state.x + sourceRadius * Math.cos(startAngle);
+                    const startY = state.y + sourceRadius * Math.sin(startAngle);
+                    const endX = state.x + sourceRadius * Math.cos(endAngle);
+                    const endY = state.y + sourceRadius * Math.sin(endAngle);
+
+                    const controlOffset = loopSize;
+                    const control1X = startX + controlOffset * Math.cos(bestPosition);
+                    const control1Y = startY + controlOffset * Math.sin(bestPosition);
+                    const control2X = endX + controlOffset * Math.cos(bestPosition);
+                    const control2Y = endY + controlOffset * Math.sin(bestPosition);
+
+                    const arrowAngle = Math.atan2(endY - control2Y, endX - control2X);
+                    const arrowSize = 8;
+
+                    arrows.push(
+                      <g key={`${state.id}-${targetId}`}>
+                        <path
+                          d={`M ${startX} ${startY} C ${control1X} ${control1Y}, ${control2X} ${control2Y}, ${endX} ${endY}`}
+                          fill="none"
+                          stroke={isArrowHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
+                          strokeWidth={isArrowHighlighted ? 3 : 2}
+                          className={isArrowHighlighted ? '' : 'text-foreground'}
+                        />
+                        <polygon
+                          points={`${endX},${endY} ${endX - arrowSize * Math.cos(arrowAngle - 0.4)},${endY - arrowSize * Math.sin(arrowAngle - 0.4)} ${endX - arrowSize * Math.cos(arrowAngle + 0.4)},${endY - arrowSize * Math.sin(arrowAngle + 0.4)}`}
+                          fill={isArrowHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
+                          className={isArrowHighlighted ? '' : 'text-foreground'}
+                        />
+                      </g>
+                    );
+                    return;
+                  }
+
+                  // Check for bidirectional connection
+                  const pairKey = getPairKey(state.id, targetId);
+                  if (processedPairs.has(pairKey)) return;
+
+                  const isBidirectional = hasTransition(state.id, targetId) && hasTransition(targetId, state.id);
+
+                  if (isBidirectional) {
+                    processedPairs.add(pairKey);
+
+                    // Determine which direction is highlighted
+                    const isForwardHighlighted = executionPhase === 'transition-arrow' &&
+                      transitionFromState === state.id &&
+                      transitionToState === targetId;
+                    const isReverseHighlighted = executionPhase === 'transition-arrow' &&
+                      transitionFromState === targetId &&
+                      transitionToState === state.id;
+                    const isHighlighted = isForwardHighlighted || isReverseHighlighted;
+
+                    // Calculate arrow geometry
+                    const dx = targetState.x - state.x;
+                    const dy = targetState.y - state.y;
+                    const angle = Math.atan2(dy, dx);
+
+                    const startX = state.x + Math.cos(angle) * (sourceRadius + 8);
+                    const startY = state.y + Math.sin(angle) * (sourceRadius + 8);
+                    const endX = targetState.x - Math.cos(angle) * (targetRadius + 8);
+                    const endY = targetState.y - Math.sin(angle) * (targetRadius + 8);
+
+                    arrows.push(
+                      <line
+                        key={`bidirectional-${pairKey}`}
+                        x1={startX}
+                        y1={startY}
+                        x2={endX}
+                        y2={endY}
+                        stroke={isHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
+                        strokeWidth={isHighlighted ? 3 : 2}
+                        markerStart={isHighlighted ? 'url(#arrowhead-start-active)' : 'url(#arrowhead-start)'}
+                        markerEnd={isHighlighted ? 'url(#arrowhead-active)' : 'url(#arrowhead)'}
+                        className={isHighlighted ? '' : 'text-foreground'}
                       />
-                      {/* Arrowhead */}
-                      <polygon
-                        points={`${endX},${endY} ${endX - arrowSize * Math.cos(arrowAngle - 0.4)},${endY - arrowSize * Math.sin(arrowAngle - 0.4)} ${endX - arrowSize * Math.cos(arrowAngle + 0.4)},${endY - arrowSize * Math.sin(arrowAngle + 0.4)}`}
-                        fill="currentColor"
-                        className="text-foreground"
+                    );
+                  } else {
+                    // Unidirectional arrow
+                    const isArrowHighlighted = executionPhase === 'transition-arrow' &&
+                      transitionFromState === state.id &&
+                      transitionToState === targetId;
+
+                    const dx = targetState.x - state.x;
+                    const dy = targetState.y - state.y;
+                    const angle = Math.atan2(dy, dx);
+
+                    const startX = state.x + Math.cos(angle) * sourceRadius;
+                    const startY = state.y + Math.sin(angle) * sourceRadius;
+                    const endX = targetState.x - Math.cos(angle) * (targetRadius + 8);
+                    const endY = targetState.y - Math.sin(angle) * (targetRadius + 8);
+
+                    arrows.push(
+                      <line
+                        key={`${state.id}-${targetId}`}
+                        x1={startX}
+                        y1={startY}
+                        x2={endX}
+                        y2={endY}
+                        stroke={isArrowHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
+                        strokeWidth={isArrowHighlighted ? 3 : 2}
+                        markerEnd={isArrowHighlighted ? 'url(#arrowhead-active)' : 'url(#arrowhead)'}
+                        className={isArrowHighlighted ? '' : 'text-foreground'}
                       />
-                    </g>
-                  );
-                }
-
-                // Calculate angle from source to target
-                const dx = targetState.x - state.x;
-                const dy = targetState.y - state.y;
-                const angle = Math.atan2(dy, dx);
-
-                // Start point: edge of source circle
-                const startX = state.x + Math.cos(angle) * sourceRadius;
-                const startY = state.y + Math.sin(angle) * sourceRadius;
-
-                // End point: edge of target circle
-                const endX = targetState.x - Math.cos(angle) * (targetRadius + 8); // +8 for arrowhead
-                const endY = targetState.y - Math.sin(angle) * (targetRadius + 8);
-
-                return (
-                  <line
-                    key={`${state.id}-${targetId}`}
-                    x1={startX}
-                    y1={startY}
-                    x2={endX}
-                    y2={endY}
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    markerEnd="url(#arrowhead)"
-                    className="text-foreground"
-                  />
-                );
+                    );
+                  }
+                });
               });
-            })}
+
+              return arrows;
+            })()}
           </svg>
 
           {/* Render States */}
@@ -581,6 +635,13 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
             const isStopState = state.id === program.stopStateId;
             const isSelected = state.id === selectedStateId;
             const isStartState = state.id === program.startStateId;
+
+            // Use highlightedStateId for state highlighting (matching SideBySideView)
+            const isStateHighlighted = highlightedStateId === state.id;
+
+            // Check if start arrow should be highlighted (when transitioning to the start state from idle)
+            const isStartArrowHighlighted = isStartState && executionPhase === 'transition-arrow' && transitionFromState === null;
+
             const radius = isStopState ? 48 : 40; // Half of state bubble size (96px/80px)
 
             return (
@@ -604,7 +665,7 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
                     }}
                   >
                     <span className="text-sm font-semibold mr-1.5">start</span>
-                    <svg width="30" height="20" className="text-foreground">
+                    <svg width="30" height="20" className={isStartArrowHighlighted ? 'text-green-500' : 'text-foreground'}>
                       <line x1="0" y1="10" x2="30" y2="10" stroke="currentColor" strokeWidth="2" />
                       <polygon points="30,10 25,7 25,13" fill="currentColor" />
                     </svg>
@@ -616,8 +677,14 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
                   className={`flex flex-col items-center justify-center rounded-full border-4 transition-all cursor-pointer ${
                     isStopState
                       ? 'w-24 h-24 bg-background border-border hover:border-accent/50'
-                      : 'w-20 h-20 bg-primary/20 border-primary hover:border-accent'
-                  } ${isSelected ? 'ring-4 ring-accent ring-offset-2' : ''}`}
+                      : 'w-20 h-20'
+                  } ${
+                    isStateHighlighted && !isStopState
+                      ? 'bg-green-500/20 border-green-500 ring-4 ring-green-500/30 scale-110 shadow-lg shadow-green-500/20'
+                      : !isStopState
+                        ? 'bg-primary/20 border-primary hover:border-accent'
+                        : ''
+                  } ${isSelected && !isStateHighlighted ? 'ring-4 ring-accent ring-offset-2' : ''}`}
                   onMouseDown={(e) => handleMouseDown(e, state.id)}
                   onClick={() => setSelectedStateId(state.id)}
                 >
@@ -770,15 +837,26 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
 
                           {getCurrentRows().map((row) => {
                             const activeDetectors = getActiveDetectors();
+                            // Check if this row is the currently executing transition
+                            // For on-state: transition row is in the current state (currentExecutingStateId)
+                            // For transition-arrow: transition row is in the previous state (parentPreviousStateId)
+                            const isRowExecuting = currentExecutingTransitionId === row.id &&
+                              executionPhase === 'on-state' &&
+                              selectedStateId === currentExecutingStateId;
+                            const isRowTransitioning = currentExecutingTransitionId === row.id &&
+                              executionPhase === 'transition-arrow' &&
+                              selectedStateId === parentPreviousStateId;
 
                             return (
                               <div
                                 key={row.id}
                                 onClick={() => setSelectedRowId(row.id)}
                                 className={`border-2 rounded-lg transition-all cursor-pointer overflow-hidden ${
-                                  selectedRowId === row.id
-                                    ? 'border-blue-500 ring-2 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20'
-                                    : 'border-border bg-muted/20 hover:border-accent/50'
+                                  isRowExecuting
+                                    ? 'border-green-500 ring-2 ring-green-500/50 bg-green-50/50 dark:bg-green-950/20 shadow-lg shadow-green-500/20'
+                                    : selectedRowId === row.id
+                                      ? 'border-blue-500 ring-2 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20'
+                                      : 'border-border bg-muted/20 hover:border-accent/50'
                                 }`}
                               >
                                 <div className="flex items-center gap-2 p-2 w-full">
@@ -882,7 +960,11 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
                                         handleUpdateRowTarget(row.id, e.target.value);
                                       }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="px-2 py-1 text-sm border border-border rounded-md bg-background text-foreground min-w-[120px]"
+                                      className={`px-2 py-1 text-sm border rounded-md min-w-[120px] transition-all ${
+                                        isRowTransitioning
+                                          ? 'border-green-500 ring-2 ring-green-500/50 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-semibold'
+                                          : 'border-border bg-background text-foreground'
+                                      }`}
                                     >
                                       {program.states.map((s) => (
                                         <option key={s.id} value={s.id}>
@@ -959,6 +1041,137 @@ const FSMEditor = ({ program, onUpdateProgram }: FSMEditorProps) => {
           </Tabs>
         )}
       </Card>
+
+      {/* Current Executing State Info */}
+      {isExecuting && currentExecutingStateId && (
+        <Card className="p-3 bg-green-500/10 border-green-500/30">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-sm font-medium">
+              {executionPhase === 'transition-arrow' && 'Transitioning to: '}
+              {executionPhase === 'on-state' && 'Current State: '}
+              {executionPhase === 'idle' && 'Current State: '}
+              <span className="text-green-600 dark:text-green-400 ml-1">
+                {program.states.find(s => s.id === currentExecutingStateId)?.name || 'Unknown'}
+              </span>
+            </span>
+          </div>
+        </Card>
+      )}
+
+      {/* Read-only Transitions Panel during execution - shows transitions from the relevant state */}
+      {isExecuting && (() => {
+        // Determine which state's transitions to show
+        const displayStateId = executionPhase === 'on-state' ? currentExecutingStateId :
+                               executionPhase === 'transition-arrow' ? parentPreviousStateId :
+                               currentExecutingStateId;
+        const displayState = program.states.find(s => s.id === displayStateId);
+
+        if (!displayState || displayStateId === program.stopStateId) return null;
+
+        const transitions = displayState.transitions || [];
+        if (transitions.length === 0) return null;
+
+        // Detector labels
+        const detectorLabels: Record<string, string> = {
+          treeFront: 'Tree Front?',
+          treeLeft: 'Tree Left?',
+          treeRight: 'Tree Right?',
+          mushroomFront: 'Mushroom?',
+          onLeaf: 'On Clover?',
+        };
+
+        // Action icons
+        const getActionIcon = (type: string) => {
+          switch (type) {
+            case 'move': return '↑';
+            case 'turnLeft': return '↶';
+            case 'turnRight': return '↷';
+            case 'pickClover': return '🍀';
+            case 'placeClover': return '⬇️';
+            default: return '?';
+          }
+        };
+
+        return (
+          <Card className="p-3">
+            <h4 className="text-xs font-semibold text-muted-foreground mb-2">
+              Transitions in "{displayState.name}"
+            </h4>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {transitions.map((transition) => {
+                const isRowExecuting = currentExecutingTransitionId === transition.id &&
+                  executionPhase === 'on-state';
+                const isRowTransitioning = currentExecutingTransitionId === transition.id &&
+                  executionPhase === 'transition-arrow';
+                const targetState = program.states.find(s => s.id === transition.targetStateId);
+
+                return (
+                  <div
+                    key={transition.id}
+                    className={`border-2 rounded-lg p-2 transition-all ${
+                      isRowExecuting
+                        ? 'border-green-500 ring-2 ring-green-500/50 bg-green-50/50 dark:bg-green-950/20'
+                        : 'border-border bg-muted/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Detector conditions */}
+                      <div className="flex gap-1 flex-wrap">
+                        {Object.entries(transition.detectorConditions).map(([detector, value]) => {
+                          if (value === null) return null;
+                          return (
+                            <span
+                              key={detector}
+                              className="text-xs px-1.5 py-0.5 bg-background rounded border border-border"
+                            >
+                              {detectorLabels[detector]?.replace('?', '')}: {value ? 'yes' : 'no'}
+                            </span>
+                          );
+                        })}
+                      </div>
+
+                      {/* Arrow separator */}
+                      <span className="text-muted-foreground">→</span>
+
+                      {/* Actions */}
+                      <div className="flex gap-1">
+                        {transition.actions.length === 0 ? (
+                          <span className="text-xs text-muted-foreground italic">no actions</span>
+                        ) : (
+                          transition.actions.map((action, idx) => (
+                            <span
+                              key={idx}
+                              className="text-lg"
+                              title={action.type}
+                            >
+                              {getActionIcon(action.type)}
+                            </span>
+                          ))
+                        )}
+                      </div>
+
+                      {/* Arrow separator */}
+                      <span className="text-muted-foreground">→</span>
+
+                      {/* Next State */}
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded border transition-all ${
+                          isRowTransitioning
+                            ? 'border-green-500 ring-2 ring-green-500/50 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-semibold'
+                            : 'border-border bg-background'
+                        }`}
+                      >
+                        {targetState?.name || 'Unknown'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        );
+      })()}
     </div>
   );
 };
