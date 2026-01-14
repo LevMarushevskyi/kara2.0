@@ -22,7 +22,7 @@ import {
   parseFSMContent,
   isValidFSMProgram,
 } from '@/models/fsm';
-import { executeFSMStep, validateFSMProgram, findMatchingTransition, executeSingleFSMAction, getTransitionInfo } from '@/models/fsmExecutor';
+import { validateFSMProgram, findMatchingTransition, executeSingleFSMAction, getTransitionInfo } from '@/models/fsmExecutor';
 import { Scenario, saveProgress } from '@/models/scenario';
 import { scenarios, getScenarioById } from '@/models/scenarios';
 import {

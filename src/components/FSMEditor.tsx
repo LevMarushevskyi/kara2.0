@@ -255,7 +255,7 @@ const FSMEditor = ({
   onUpdateProgram,
   currentExecutingStateId = null,
   currentExecutingTransitionId = null,
-  previousStateId: parentPreviousStateId = null,
+  previousStateId: _parentPreviousStateId = null,
   executionPhase: parentExecutionPhase = 'idle',
   currentActionIndex = -1,
   isExecuting = false,
