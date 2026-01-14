@@ -556,9 +556,9 @@ const FSMReadOnlyView = ({
     <div className="h-full flex flex-col">
       <h3 className="text-sm font-semibold mb-3 flex-shrink-0">Finite State Machine</h3>
 
-      {/* State Diagram (scrollable container) */}
-      <div className="bg-muted/20 rounded-lg border-2 border-border overflow-auto relative" style={{ minHeight: '200px', maxHeight: '50%' }}>
-        {/* Zoom Controls */}
+      {/* State Diagram - fixed height to leave room for transitions */}
+      <div className="relative bg-muted/20 rounded-lg border-2 border-border flex-shrink-0" style={{ height: '200px' }}>
+        {/* Zoom Controls - fixed position within container */}
         <div className="absolute top-2 right-2 z-20 flex gap-1 bg-background/80 backdrop-blur-sm rounded-md border border-border p-1">
           <button
             onClick={() => setDiagramZoom(z => Math.min(z + 0.25, 2))}
@@ -586,16 +586,18 @@ const FSMReadOnlyView = ({
           </span>
         </div>
 
-        {/* Zoomable Content */}
-        <div
-          className="relative origin-top-left"
-          style={{
-            width: `${canvasWidth * diagramZoom}px`,
-            height: `${canvasHeight * diagramZoom}px`,
-            minWidth: '100%',
-            minHeight: '100%',
-          }}
-        >
+        {/* Scrollable Container */}
+        <div className="absolute inset-0 overflow-auto">
+          {/* Zoomable Content */}
+          <div
+            className="relative origin-top-left"
+            style={{
+              width: `${canvasWidth * diagramZoom}px`,
+              height: `${canvasHeight * diagramZoom}px`,
+              minWidth: '100%',
+              minHeight: '100%',
+            }}
+          >
         <div
           className="relative origin-top-left"
           style={{
@@ -860,20 +862,33 @@ const FSMReadOnlyView = ({
                 {/* State Circle */}
                 <div
                   className={`
-                    flex items-center justify-center rounded-full font-medium text-sm
+                    flex items-center justify-center rounded-full font-medium
                     transition-all duration-200
                     ${isStopState ? 'w-24 h-24 bg-destructive/20 border-4 border-destructive' : 'w-20 h-20 border-2'}
                     ${isStateHighlighted && !isStopState ? 'bg-green-500/20 border-green-500 ring-4 ring-green-500/30 scale-110' : ''}
                     ${!isStateHighlighted && !isStopState ? 'bg-secondary border-border' : ''}
                   `}
                 >
-                  <span className={isStopState ? 'text-destructive font-bold' : ''}>
+                  <span
+                    className={`text-center px-1 overflow-hidden leading-tight ${isStopState ? 'text-destructive font-bold' : ''}`}
+                    style={{
+                      fontSize: state.name.length > 20 ? '8px' : state.name.length > 12 ? '9px' : '11px',
+                      maxWidth: isStopState ? '80px' : '64px',
+                      maxHeight: isStopState ? '60px' : '48px',
+                      display: '-webkit-box',
+                      WebkitLineClamp: state.name.length > 20 ? 3 : 2,
+                      WebkitBoxOrient: 'vertical',
+                      wordBreak: 'break-word',
+                    }}
+                    title={state.name}
+                  >
                     {state.name}
                   </span>
                 </div>
               </div>
             );
           })}
+        </div>
         </div>
         </div>
       </div>
@@ -929,11 +944,11 @@ const FSMReadOnlyView = ({
         };
 
         return (
-          <div className="mt-4 flex-shrink-0">
-            <h4 className="text-xs font-semibold text-muted-foreground mb-2">
+          <div className="mt-4 flex-1 min-h-0 flex flex-col">
+            <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex-shrink-0">
               Transitions in "{displayState.name}"
             </h4>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
+            <div className="space-y-2 flex-1 overflow-y-auto">
               {transitions.map((transition) => {
                 const isRowExecuting = currentTransitionId === transition.id &&
                   (executionPhase === 'transition-matched' || executionPhase === 'executing-action');

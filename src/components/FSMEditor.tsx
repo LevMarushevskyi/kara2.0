@@ -1,13 +1,12 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   FSMProgram,
   FSMState,
   DetectorType,
 } from '@/models/fsm';
-import { Plus, Play, Trash2, Bug, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { Plus, Play, Trash2, Bug, ZoomIn, ZoomOut, Maximize2, X } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 
 // Detector icon component - shows Kara with detected object in relative position
 // Uses the same visual elements as WorldView for consistency
@@ -116,6 +115,124 @@ const DetectorIcon = ({
   );
 };
 
+// Editable tab component for inline state name editing
+const EditableTab = ({
+  name,
+  isSelected,
+  isStart,
+  onSelect,
+  onRename,
+  onDelete,
+  maxLength = 30,
+}: {
+  name: string;
+  isSelected: boolean;
+  isStart: boolean;
+  onSelect: () => void;
+  onRename: (newName: string) => void;
+  onDelete?: () => void;
+  maxLength?: number;
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  useEffect(() => {
+    setEditValue(name);
+  }, [name]);
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsEditing(true);
+    setEditValue(name);
+  };
+
+  const handleBlur = () => {
+    setIsEditing(false);
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== name) {
+      onRename(trimmed);
+    } else {
+      setEditValue(name);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      inputRef.current?.blur();
+    } else if (e.key === 'Escape') {
+      setEditValue(name);
+      setIsEditing(false);
+    }
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDelete) {
+      const confirmed = window.confirm(
+        `Are you sure you want to delete the state "${name}"?\n\nTransitions pointing to this state will become self-loops.`
+      );
+      if (confirmed) {
+        onDelete();
+      }
+    }
+  };
+
+  return (
+    <div
+      className={`
+        px-3 py-1.5 text-sm font-medium rounded-t-md border-b-2 transition-colors
+        flex items-center gap-1 min-w-0 max-w-[200px] group
+        ${isSelected
+          ? 'bg-background border-primary text-foreground'
+          : 'bg-muted/50 border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+        }
+      `}
+      title={name.length > 20 ? name : undefined}
+    >
+      <button
+        onClick={onSelect}
+        onDoubleClick={handleDoubleClick}
+        className="flex items-center gap-1 min-w-0 flex-1"
+      >
+        {isStart && <span className="text-green-500 flex-shrink-0">▶</span>}
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            maxLength={maxLength}
+            className="w-full min-w-[60px] bg-transparent border-none outline-none text-sm p-0 caret-black dark:caret-white"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="truncate">{name}</span>
+        )}
+      </button>
+      {onDelete && !isEditing && (
+        <button
+          onClick={handleDelete}
+          className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity p-0.5 -mr-1 flex-shrink-0"
+          title="Delete state"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+};
+
 // Execution phase type for FSM visualization
 type FSMExecutionPhase = 'idle' | 'transition-matched' | 'executing-action' | 'showing-arrow';
 
@@ -198,13 +315,49 @@ const FSMEditor = ({
   const canvasWidth = bounds.width;
   const canvasHeight = bounds.height;
 
+  // Helper function to find a non-overlapping position for a new state
+  const findNonOverlappingPosition = (): { x: number; y: number } => {
+    const stateRadius = 40; // Approximate radius of state bubble
+    const minDistance = stateRadius * 2.5; // Minimum distance between state centers
+    const gridStep = 100; // Step size for grid-based placement
+
+    // Try positions in a grid pattern
+    for (let row = 0; row < 10; row++) {
+      for (let col = 0; col < 10; col++) {
+        const candidateX = 150 + col * gridStep;
+        const candidateY = 100 + row * gridStep;
+
+        // Check if this position overlaps with any existing state
+        const hasOverlap = program.states.some((state) => {
+          const dx = state.x - candidateX;
+          const dy = state.y - candidateY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          return distance < minDistance;
+        });
+
+        if (!hasOverlap) {
+          return { x: candidateX, y: candidateY };
+        }
+      }
+    }
+
+    // Fallback: place it offset from the last state
+    const lastState = program.states[program.states.length - 1];
+    if (lastState) {
+      return { x: lastState.x + gridStep, y: lastState.y };
+    }
+
+    return { x: 150, y: 100 };
+  };
+
   const handleAddState = () => {
     const newStateId = `state-${Date.now()}`;
+    const position = findNonOverlappingPosition();
     const newState: FSMState = {
       id: newStateId,
       name: `State ${editableStates.length + 1}`,
-      x: 150 + editableStates.length * 80,
-      y: 100,
+      x: position.x,
+      y: position.y,
       transitions: [],
     };
 
@@ -227,9 +380,12 @@ const FSMEditor = ({
   const handleDeleteState = () => {
     if (selectedStateId && selectedStateId !== program.stopStateId) {
       const newStates = program.states.filter((s) => s.id !== selectedStateId);
-      const cleanedStates = newStates.map((state) => ({
+      // Redirect transitions pointing to deleted state back to their own state (self-loop)
+      const updatedStates = newStates.map((state) => ({
         ...state,
-        transitions: state.transitions.filter((t) => t.targetStateId !== selectedStateId),
+        transitions: state.transitions.map((t) =>
+          t.targetStateId === selectedStateId ? { ...t, targetStateId: state.id } : t
+        ),
       }));
 
       // If we deleted the start state, clear it
@@ -240,7 +396,7 @@ const FSMEditor = ({
 
       onUpdateProgram({
         ...program,
-        states: cleanedStates,
+        states: updatedStates,
         startStateId: newStartStateId,
       });
 
@@ -254,26 +410,84 @@ const FSMEditor = ({
     const state = program.states.find((s) => s.id === stateId);
     if (!state) return;
 
-    const rect = e.currentTarget.getBoundingClientRect();
+    // Get the scrollable container (the element with onMouseMove)
+    const scrollContainer = e.currentTarget.closest('[data-scroll-container]') as HTMLElement;
+    if (!scrollContainer) return;
+
+    const containerRect = scrollContainer.getBoundingClientRect();
+
+    // Calculate click position in unscaled coordinates
+    const clickX = (e.clientX - containerRect.left + scrollContainer.scrollLeft) / diagramZoom;
+    const clickY = (e.clientY - containerRect.top + scrollContainer.scrollTop) / diagramZoom;
+
     setDraggingStateId(stateId);
     setDragOffset({
-      x: e.clientX - rect.left - rect.width / 2,
-      y: e.clientY - rect.top - rect.height / 2,
+      x: clickX - state.x,
+      y: clickY - state.y,
     });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!draggingStateId) return;
 
-    const container = e.currentTarget.getBoundingClientRect();
-    const newX = e.clientX - container.left - dragOffset.x;
-    const newY = e.clientY - container.top - dragOffset.y;
+    const container = e.currentTarget as HTMLElement;
+    const containerRect = container.getBoundingClientRect();
+
+    // Calculate mouse position in unscaled coordinates, accounting for scroll and zoom
+    const mouseX = (e.clientX - containerRect.left + container.scrollLeft) / diagramZoom;
+    const mouseY = (e.clientY - containerRect.top + container.scrollTop) / diagramZoom;
+
+    let newX = Math.max(0, mouseX - dragOffset.x);
+    let newY = Math.max(0, mouseY - dragOffset.y);
+
+    const stateRadius = 48; // Bubble radius (w-20 = 80px, so radius ~40 + padding)
+    const minDistance = stateRadius * 2; // Minimum distance between state centers
+
+    // Get all other states (not the one being dragged)
+    const otherStates = program.states.filter((s) => s.id !== draggingStateId);
+
+    // Iteratively resolve collisions by moving the dragged state away from others
+    // This prevents overlap instead of pushing other states
+    let iterations = 0;
+    const maxIterations = 10;
+    let hasCollision = true;
+
+    while (hasCollision && iterations < maxIterations) {
+      hasCollision = false;
+      iterations++;
+
+      for (const other of otherStates) {
+        const dx = newX - other.x;
+        const dy = newY - other.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < minDistance) {
+          hasCollision = true;
+          if (distance === 0) {
+            // Exactly on top, push in a default direction
+            newX = other.x + minDistance;
+          } else {
+            // Move the dragged state away to maintain minimum distance
+            const normalX = dx / distance;
+            const normalY = dy / distance;
+            newX = other.x + normalX * minDistance;
+            newY = other.y + normalY * minDistance;
+          }
+          // Clamp to bounds
+          newX = Math.max(0, newX);
+          newY = Math.max(0, newY);
+        }
+      }
+    }
+
+    // Create the updated states array with only the dragged state moved
+    const updatedStates = program.states.map((state) =>
+      state.id === draggingStateId ? { ...state, x: newX, y: newY } : state
+    );
 
     onUpdateProgram({
       ...program,
-      states: program.states.map((state) =>
-        state.id === draggingStateId ? { ...state, x: Math.max(0, newX), y: Math.max(0, newY) } : state
-      ),
+      states: updatedStates,
     });
   };
 
@@ -455,6 +669,45 @@ const FSMEditor = ({
 
   // Update row target state
   const handleUpdateRowTarget = (rowId: string, targetStateId: string) => {
+    // Handle "New State" option
+    if (targetStateId === '__new_state__') {
+      const newStateId = `state-${Date.now()}`;
+      const position = findNonOverlappingPosition();
+      const newState: FSMState = {
+        id: newStateId,
+        name: `State ${editableStates.length + 1}`,
+        x: position.x,
+        y: position.y,
+        transitions: [],
+      };
+
+      // Update the row to point to the new state
+      const rows = getCurrentRows();
+      const updatedRows = rows.map((row) => {
+        if (row.id === rowId) {
+          return {
+            ...row,
+            targetStateId: newStateId,
+          };
+        }
+        return row;
+      });
+
+      // Update program with new state and updated transitions
+      const updatedStates = program.states.map((s) => {
+        if (s.id === selectedStateId) {
+          return { ...s, transitions: updatedRows };
+        }
+        return s;
+      });
+
+      onUpdateProgram({
+        ...program,
+        states: [...updatedStates, newState],
+      });
+      return;
+    }
+
     const rows = getCurrentRows();
     const updatedRows = rows.map((row) => {
       if (row.id === rowId) {
@@ -554,6 +807,7 @@ const FSMEditor = ({
           {/* Scrollable Container */}
           <div
             className="absolute inset-0 overflow-auto select-none"
+            data-scroll-container
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
@@ -880,7 +1134,19 @@ const FSMEditor = ({
                   onMouseDown={(e) => handleMouseDown(e, state.id)}
                   onClick={() => setSelectedStateId(state.id)}
                 >
-                  <span className="text-xs font-semibold text-center px-2 overflow-hidden text-ellipsis whitespace-nowrap max-w-full">
+                  <span
+                    className="font-semibold text-center px-1 overflow-hidden leading-tight"
+                    style={{
+                      fontSize: state.name.length > 20 ? '8px' : state.name.length > 12 ? '9px' : '11px',
+                      maxWidth: isStopState ? '80px' : '64px',
+                      maxHeight: isStopState ? '60px' : '48px',
+                      display: '-webkit-box',
+                      WebkitLineClamp: state.name.length > 20 ? 3 : 2,
+                      WebkitBoxOrient: 'vertical',
+                      wordBreak: 'break-word',
+                    }}
+                    title={state.name}
+                  >
                     {state.name}
                   </span>
                 </div>
@@ -901,39 +1167,61 @@ const FSMEditor = ({
             Click "Add State" to create your first state
           </div>
         ) : (
-          <Tabs value={selectedStateId} onValueChange={setSelectedStateId}>
-            <TabsList className="w-full justify-start overflow-x-auto">
+          <div>
+            {/* Custom Tab Bar with EditableTab components */}
+            <div className="flex items-center gap-1 border-b border-border overflow-x-auto pb-0">
               {editableStates.map((state) => (
-                <TabsTrigger key={state.id} value={state.id} className="min-w-fit">
-                  {state.name}
-                </TabsTrigger>
+                <EditableTab
+                  key={state.id}
+                  name={state.name}
+                  isSelected={selectedStateId === state.id}
+                  isStart={state.id === program.startStateId}
+                  onSelect={() => setSelectedStateId(state.id)}
+                  onRename={(newName) => {
+                    onUpdateProgram({
+                      ...program,
+                      states: program.states.map((s) =>
+                        s.id === state.id ? { ...s, name: newName } : s
+                      ),
+                    });
+                  }}
+                  onDelete={() => {
+                    const newStates = program.states.filter((s) => s.id !== state.id);
+                    // Redirect transitions pointing to deleted state back to their own state (self-loop)
+                    const updatedStates = newStates.map((s) => ({
+                      ...s,
+                      transitions: s.transitions.map((t) =>
+                        t.targetStateId === state.id ? { ...t, targetStateId: s.id } : t
+                      ),
+                    }));
+                    let newStartStateId = program.startStateId;
+                    if (program.startStateId === state.id) {
+                      newStartStateId = null;
+                    }
+                    onUpdateProgram({
+                      ...program,
+                      states: updatedStates,
+                      startStateId: newStartStateId,
+                    });
+                    const nextState = editableStates.find((s) => s.id !== state.id);
+                    setSelectedStateId(nextState?.id || program.stopStateId);
+                  }}
+                  maxLength={30}
+                />
               ))}
-            </TabsList>
+              <button
+                onClick={handleAddState}
+                className="px-2 py-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-t-md transition-colors flex-shrink-0"
+                title="Add new state"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
 
+            {/* Tab Content */}
             {editableStates.map((state) => (
-              <TabsContent key={state.id} value={state.id} className="mt-4">
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">State Name</label>
-                    <input
-                      type="text"
-                      value={state.name}
-                      maxLength={15}
-                      onChange={(e) => {
-                        onUpdateProgram({
-                          ...program,
-                          states: program.states.map((s) =>
-                            s.id === state.id ? { ...s, name: e.target.value } : s
-                          ),
-                        });
-                      }}
-                      className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground caret-black dark:caret-white"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {state.name.length}/15 characters
-                    </p>
-                  </div>
-
+              selectedStateId === state.id ? (
+                <div key={state.id} className="mt-4">
                   <div className="overflow-hidden">
                     <h4 className="text-sm font-medium mb-2">Functions</h4>
                     <div className="flex gap-4">
@@ -1193,6 +1481,10 @@ const FSMEditor = ({
                                           {s.name}
                                         </option>
                                       ))}
+                                      <option disabled>───────────</option>
+                                      <option value="__new_state__" className="text-green-600 font-semibold">
+                                        + New State
+                                      </option>
                                     </select>
                                   </div>
                                 </div>
@@ -1250,9 +1542,9 @@ const FSMEditor = ({
                     </div>
                   </div>
                 </div>
-              </TabsContent>
+              ) : null
             ))}
-          </Tabs>
+          </div>
         )}
       </Card>
 
@@ -1274,151 +1566,6 @@ const FSMEditor = ({
         </Card>
       )}
 
-      {/* Read-only Transitions Panel during execution - shows transitions from the relevant state */}
-      {isExecuting && (() => {
-        // Determine which state's transitions to show
-        // For transition-matched/executing-action/showing-arrow: show the current state's transitions
-        const displayStateId = currentExecutingStateId;
-        const displayState = program.states.find(s => s.id === displayStateId);
-
-        if (!displayState || displayStateId === program.stopStateId) return null;
-
-        const transitions = displayState.transitions || [];
-        if (transitions.length === 0) return null;
-
-        // Detector titles for accessibility
-        const detectorTitles: Record<string, string> = {
-          treeFront: 'Tree in front',
-          treeLeft: 'Tree to left',
-          treeRight: 'Tree to right',
-          mushroomFront: 'Mushroom in front',
-          onLeaf: 'On clover',
-        };
-
-        // Action icons
-        const getActionIcon = (type: string) => {
-          switch (type) {
-            case 'move': return '↑';
-            case 'turnLeft': return '↶';
-            case 'turnRight': return '↷';
-            case 'pickClover': return '🍀';
-            case 'placeClover': return '⬇️';
-            default: return '?';
-          }
-        };
-
-        return (
-          <Card className="p-3">
-            <h4 className="text-xs font-semibold text-muted-foreground mb-2">
-              Transitions in "{displayState.name}"
-            </h4>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {transitions.map((transition) => {
-                const isRowExecuting = currentExecutingTransitionId === transition.id &&
-                  (executionPhase === 'transition-matched' || executionPhase === 'executing-action');
-                const isRowTransitioning = currentExecutingTransitionId === transition.id &&
-                  executionPhase === 'showing-arrow';
-                const targetState = program.states.find(s => s.id === transition.targetStateId);
-
-                return (
-                  <div
-                    key={transition.id}
-                    className={`border-2 rounded-lg p-2 transition-all ${
-                      isRowExecuting
-                        ? 'border-green-500 ring-2 ring-green-500/50 bg-green-50/50 dark:bg-green-950/20'
-                        : 'border-border bg-muted/20'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* Detector conditions */}
-                      <div className="flex gap-1 flex-wrap items-center">
-                        {Object.entries(transition.detectorConditions).map(([detector, value]) => {
-                          if (value === null) return null;
-                          return (
-                            <div
-                              key={detector}
-                              className="flex items-center gap-0.5 px-1 py-0.5 bg-background rounded border border-border"
-                              title={`${detectorTitles[detector]}: ${value ? 'yes' : 'no'}`}
-                            >
-                              <DetectorIcon type={detector as 'treeFront' | 'treeLeft' | 'treeRight' | 'mushroomFront' | 'onLeaf'} size={24} />
-                              <span className="text-xs font-medium">{value ? '✓' : '✗'}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Arrow separator */}
-                      <span className="text-muted-foreground">→</span>
-
-                      {/* Actions with individual highlighting */}
-                      <div className="flex gap-1">
-                        {transition.actions.length === 0 ? (
-                          <span className="text-xs text-muted-foreground italic">no actions</span>
-                        ) : (
-                          transition.actions.map((action, idx) => {
-                            // Check if this specific action is being executed
-                            const isActionExecuting =
-                              isRowExecuting &&
-                              executionPhase === 'executing-action' &&
-                              idx === currentActionIndex;
-
-                            // Check if this action has already been executed
-                            const isActionCompleted =
-                              isRowExecuting &&
-                              executionPhase === 'executing-action' &&
-                              idx < currentActionIndex;
-
-                            // Check if action is pending
-                            const isActionPending =
-                              isRowExecuting &&
-                              (executionPhase === 'transition-matched' ||
-                               (executionPhase === 'executing-action' && idx > currentActionIndex));
-
-                            return (
-                              <span
-                                key={idx}
-                                className={`relative text-lg px-1 rounded transition-all ${
-                                  isActionExecuting
-                                    ? 'bg-green-500/30 ring-2 ring-green-500/50 scale-110'
-                                    : isActionCompleted
-                                    ? 'opacity-50'
-                                    : isActionPending
-                                    ? 'bg-yellow-100 dark:bg-yellow-900/30'
-                                    : ''
-                                }`}
-                                title={action.type}
-                              >
-                                {getActionIcon(action.type)}
-                                {isActionExecuting && (
-                                  <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
-                                )}
-                              </span>
-                            );
-                          })
-                        )}
-                      </div>
-
-                      {/* Arrow separator */}
-                      <span className="text-muted-foreground">→</span>
-
-                      {/* Next State */}
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded border transition-all ${
-                          isRowTransitioning
-                            ? 'border-green-500 ring-2 ring-green-500/50 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-semibold'
-                            : 'border-border bg-background'
-                        }`}
-                      >
-                        {targetState?.name || 'Unknown'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        );
-      })()}
     </div>
   );
 };
