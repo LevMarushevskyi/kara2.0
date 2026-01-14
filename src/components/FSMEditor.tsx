@@ -6,8 +6,8 @@ import {
   FSMState,
   DetectorType,
 } from '@/models/fsm';
-import { Plus, Play, Trash2, Bug } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, Play, Trash2, Bug, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
 
 // Detector icon component - shows Kara with detected object in relative position
 // Uses the same visual elements as WorldView for consistency
@@ -149,6 +149,7 @@ const FSMEditor = ({
   const [draggingStateId, setDraggingStateId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [diagramZoom, setDiagramZoom] = useState(1);
 
   // Use parent execution phase directly (no mapping needed anymore)
   const executionPhase: FSMExecutionPhase = parentExecutionPhase;
@@ -170,6 +171,32 @@ const FSMEditor = ({
   ) : null;
 
   const editableStates = program.states.filter((s) => s.id !== program.stopStateId);
+
+  // Calculate bounding box of all states to determine canvas size for scrolling
+  const STATE_RADIUS = 48;
+  const PADDING = 80;
+  const bounds = useMemo(() => {
+    if (program.states.length === 0) {
+      return { minX: 0, minY: 0, width: 400, height: 256 };
+    }
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    program.states.forEach(state => {
+      minX = Math.min(minX, state.x - STATE_RADIUS - PADDING);
+      minY = Math.min(minY, state.y - STATE_RADIUS - PADDING);
+      maxX = Math.max(maxX, state.x + STATE_RADIUS + PADDING);
+      maxY = Math.max(maxY, state.y + STATE_RADIUS + PADDING);
+    });
+
+    const width = Math.max(maxX - minX, 400);
+    const height = Math.max(maxY - minY, 256);
+
+    return { minX, minY, width, height };
+  }, [program.states]);
+
+  const canvasWidth = bounds.width;
+  const canvasHeight = bounds.height;
 
   const handleAddState = () => {
     const newStateId = `state-${Date.now()}`;
@@ -495,12 +522,61 @@ const FSMEditor = ({
         </div>
 
         {/* State Diagram Canvas */}
-        <div
-          className="relative w-full h-64 bg-muted/20 rounded-lg border-2 border-border overflow-hidden select-none"
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-        >
+        <div className="relative w-full h-64 bg-muted/20 rounded-lg border-2 border-border">
+          {/* Zoom Controls */}
+          <div className="absolute top-2 right-2 z-20 flex gap-1 bg-background/80 backdrop-blur-sm rounded-md border border-border p-1">
+            <button
+              onClick={() => setDiagramZoom(z => Math.min(z + 0.25, 2))}
+              className="p-1 hover:bg-muted rounded transition-colors"
+              title="Zoom in"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setDiagramZoom(z => Math.max(z - 0.25, 0.5))}
+              className="p-1 hover:bg-muted rounded transition-colors"
+              title="Zoom out"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setDiagramZoom(1)}
+              className="p-1 hover:bg-muted rounded transition-colors"
+              title="Reset zoom"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
+            <span className="text-xs text-muted-foreground px-1 flex items-center">
+              {Math.round(diagramZoom * 100)}%
+            </span>
+          </div>
+
+          {/* Scrollable Container */}
+          <div
+            className="absolute inset-0 overflow-auto select-none"
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
+            {/* Zoomable Content Wrapper - sets scrollable area size */}
+            <div
+              className="relative origin-top-left"
+              style={{
+                width: `${canvasWidth * diagramZoom}px`,
+                height: `${canvasHeight * diagramZoom}px`,
+                minWidth: '100%',
+                minHeight: '100%',
+              }}
+            >
+            {/* Scaled Content */}
+            <div
+              className="relative origin-top-left"
+              style={{
+                width: `${canvasWidth}px`,
+                height: `${canvasHeight}px`,
+                transform: `scale(${diagramZoom})`,
+              }}
+            >
           {/* SVG Layer for Transition Arrows */}
           <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }}>
             <defs>
@@ -811,6 +887,9 @@ const FSMEditor = ({
               </div>
             );
           })}
+            </div>
+            </div>
+          </div>
         </div>
       </Card>
 
@@ -1207,13 +1286,13 @@ const FSMEditor = ({
         const transitions = displayState.transitions || [];
         if (transitions.length === 0) return null;
 
-        // Detector labels
-        const detectorLabels: Record<string, string> = {
-          treeFront: 'Tree Front?',
-          treeLeft: 'Tree Left?',
-          treeRight: 'Tree Right?',
-          mushroomFront: 'Mushroom?',
-          onLeaf: 'On Clover?',
+        // Detector titles for accessibility
+        const detectorTitles: Record<string, string> = {
+          treeFront: 'Tree in front',
+          treeLeft: 'Tree to left',
+          treeRight: 'Tree to right',
+          mushroomFront: 'Mushroom in front',
+          onLeaf: 'On clover',
         };
 
         // Action icons
@@ -1252,16 +1331,18 @@ const FSMEditor = ({
                   >
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Detector conditions */}
-                      <div className="flex gap-1 flex-wrap">
+                      <div className="flex gap-1 flex-wrap items-center">
                         {Object.entries(transition.detectorConditions).map(([detector, value]) => {
                           if (value === null) return null;
                           return (
-                            <span
+                            <div
                               key={detector}
-                              className="text-xs px-1.5 py-0.5 bg-background rounded border border-border"
+                              className="flex items-center gap-0.5 px-1 py-0.5 bg-background rounded border border-border"
+                              title={`${detectorTitles[detector]}: ${value ? 'yes' : 'no'}`}
                             >
-                              {detectorLabels[detector]?.replace('?', '')}: {value ? 'yes' : 'no'}
-                            </span>
+                              <DetectorIcon type={detector as 'treeFront' | 'treeLeft' | 'treeRight' | 'mushroomFront' | 'onLeaf'} size={24} />
+                              <span className="text-xs font-medium">{value ? '✓' : '✗'}</span>
+                            </div>
                           );
                         })}
                       </div>
