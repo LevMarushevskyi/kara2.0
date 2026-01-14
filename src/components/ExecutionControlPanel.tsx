@@ -5,10 +5,10 @@ import { Play, Pause, SkipForward, Square, FastForward } from 'lucide-react';
 
 // Speed presets in milliseconds (delay between steps)
 const SPEED_PRESETS = {
-  slow: { label: 'Slow', value: 2000 },
-  normal: { label: 'Normal', value: 1000 },
-  fast: { label: 'Fast', value: 400 },
-  instant: { label: 'Instant', value: 100 },
+  slow: { label: 'Slow', value: 1000 },
+  normal: { label: 'Normal', value: 500 },
+  fast: { label: 'Fast', value: 200 },
+  instant: { label: 'Instant', value: 50 },
 } as const;
 
 type SpeedPreset = keyof typeof SPEED_PRESETS;
@@ -23,10 +23,10 @@ const getActivePreset = (speed: number): SpeedPreset | null => {
 
 // Helper to get speed description
 const getSpeedDescription = (speed: number): string => {
-  if (speed >= 1800) return 'Very Slow';
-  if (speed >= 1200) return 'Slow';
-  if (speed >= 600) return 'Normal';
-  if (speed >= 250) return 'Fast';
+  if (speed >= 900) return 'Very Slow';
+  if (speed >= 600) return 'Slow';
+  if (speed >= 300) return 'Normal';
+  if (speed >= 100) return 'Fast';
   return 'Instant';
 };
 
@@ -214,11 +214,11 @@ const ExecutionControlPanel = ({
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-muted-foreground">Slow</span>
             <Slider
-              value={[2100 - executionSpeed]}
-              onValueChange={(value) => onExecutionSpeedChange(2100 - value[0])}
-              min={100}
-              max={2000}
-              step={100}
+              value={[1050 - executionSpeed]}
+              onValueChange={(value) => onExecutionSpeedChange(1050 - value[0])}
+              min={50}
+              max={1000}
+              step={50}
               className="flex-1"
             />
             <span className="text-[10px] text-muted-foreground">Fast</span>

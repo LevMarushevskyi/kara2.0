@@ -22,7 +22,7 @@ import {
   parseFSMContent,
   isValidFSMProgram,
 } from '@/models/fsm';
-import { validateFSMProgram, findMatchingTransition, executeSingleFSMAction, getTransitionInfo } from '@/models/fsmExecutor';
+import { validateFSMProgram, findMatchingTransition, executeSingleFSMAction, getTransitionInfo, executeFSMToCompletion } from '@/models/fsmExecutor';
 import { Scenario, saveProgress } from '@/models/scenario';
 import { scenarios, getScenarioById } from '@/models/scenarios';
 import {
@@ -120,7 +120,7 @@ const Index = () => {
   const [program, setProgram] = useState<CommandType[]>([]);
   const [currentStep, setCurrentStep] = useState(-1);
   const [isRunning, setIsRunning] = useState(false);
-  const [executionSpeed, setExecutionSpeed] = useState(1000);
+  const [executionSpeed, setExecutionSpeed] = useState(500);
   const [selectedObject, setSelectedObject] = useState<CellType | null | 'KARA' | undefined>(undefined);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
   const [showExerciseComplete, setShowExerciseComplete] = useState(false);
@@ -621,6 +621,186 @@ const Index = () => {
     setIsRunning(false); // Make sure we're not in running mode for step
     executeCommand(program[nextStep]);
     announce(`Executing step ${nextStep + 1} of ${program.length}`);
+  };
+
+  const handleSkip = () => {
+    // === FSM (Kara) Mode ===
+    if (programmingLanguage === 'Kara') {
+      const validation = validateFSMProgram(fsmProgram);
+      if (!validation.valid) {
+        toast.error(validation.error || 'FSM program is not valid');
+        return;
+      }
+
+      let currentWorld = world;
+      let startStateForCompletion: string | null = null;
+
+      // If we're mid-execution, we need to handle partially completed transitions
+      if ((isFsmRunning || fsmPhase !== 'idle') && fsmCurrentState && fsmCurrentTransition) {
+        const { actionCount, targetStateId } = getTransitionInfo(fsmProgram, fsmCurrentState, fsmCurrentTransition);
+
+        // If we're in the middle of executing actions, complete remaining actions
+        if (fsmPhase === 'executing-action' && fsmCurrentActionIndex >= 0) {
+          // Execute remaining actions in current transition
+          for (let i = fsmCurrentActionIndex + 1; i < actionCount; i++) {
+            const result = executeSingleFSMAction(currentWorld, fsmProgram, fsmCurrentState, fsmCurrentTransition, i);
+            if (!result.success) {
+              setIsFsmRunning(false);
+              resetFsmExecution();
+              toast.error(result.error || 'Action failed during skip');
+              return;
+            }
+            currentWorld = result.world;
+          }
+        }
+        // If in transition-matched phase, execute all actions
+        else if (fsmPhase === 'transition-matched') {
+          for (let i = 0; i < actionCount; i++) {
+            const result = executeSingleFSMAction(currentWorld, fsmProgram, fsmCurrentState, fsmCurrentTransition, i);
+            if (!result.success) {
+              setIsFsmRunning(false);
+              resetFsmExecution();
+              toast.error(result.error || 'Action failed during skip');
+              return;
+            }
+            currentWorld = result.world;
+          }
+        }
+
+        // Now continue from the target state of the current transition
+        startStateForCompletion = targetStateId;
+      } else {
+        // Not running or idle - start from the beginning
+        startStateForCompletion = fsmProgram.startStateId;
+      }
+
+      if (!startStateForCompletion) {
+        toast.error('No start state set');
+        return;
+      }
+
+      // Stop any running execution
+      setIsFsmRunning(false);
+      resetFsmExecution();
+
+      // Execute to completion from the determined state
+      const result = executeFSMToCompletion(currentWorld, fsmProgram, startStateForCompletion);
+
+      setWorld(result.world);
+
+      if (result.error) {
+        toast.error(result.error);
+      } else if (result.completed) {
+        toast.success(`Skipped to end (${result.steps} steps)`);
+      }
+      return;
+    }
+
+    // === ScratchKara Mode ===
+    if (programmingLanguage === 'ScratchKara') {
+      if (program.length === 0) return;
+      setIsRunning(false);
+
+      let tempWorld = world;
+      // Start from current position (currentStep + 1), or 0 if not started
+      const startIndex = currentStep === -1 ? 0 : currentStep + 1;
+
+      for (let i = startIndex; i < program.length; i++) {
+        const cmd = program[i];
+        switch (cmd) {
+          case CommandType.MoveForward:
+            tempWorld = moveForward(tempWorld);
+            break;
+          case CommandType.TurnLeft:
+            tempWorld = turnLeft(tempWorld);
+            break;
+          case CommandType.TurnRight:
+            tempWorld = turnRight(tempWorld);
+            break;
+          case CommandType.PickClover:
+            tempWorld = pickClover(tempWorld);
+            break;
+          case CommandType.PlaceClover:
+            tempWorld = placeClover(tempWorld);
+            break;
+        }
+      }
+      setWorld(tempWorld);
+      setCurrentStep(-1);
+      toast.success('Skipped to end');
+      return;
+    }
+
+    // === Text Language Modes (JavaKara, PythonKara, etc.) ===
+    if (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage)) {
+      const lang = programmingLanguage as TextKaraLanguage;
+      const code = lang === 'JavaKara' ? javaKaraCode :
+                   lang === 'PythonKara' ? pythonKaraCode :
+                   lang === 'JavaScriptKara' ? jsKaraCode :
+                   rubyKaraCode;
+
+      if (!code.trim()) {
+        toast.error('No code to execute');
+        return;
+      }
+
+      // Stop any running execution
+      setIsTextKaraRunning(false);
+
+      // If already running with an interpreter, continue from current position
+      // Otherwise create a fresh interpreter
+      let interpreter = textKaraInterpreter;
+      let currentWorld = world;
+      let steps = 0;
+      const maxSteps = 10000;
+
+      if (!interpreter) {
+        // Create fresh interpreter starting from current world state
+        const result = createStreamingInterpreter(code, lang, world);
+        if (result.error || !result.interpreter) {
+          toast.error(result.error || 'Failed to create interpreter');
+          return;
+        }
+        interpreter = result.interpreter;
+      }
+
+      while (steps < maxSteps) {
+        const nextCmd = getNextStreamingCommand(interpreter);
+        steps++;
+
+        if (nextCmd.error) {
+          toast.error(nextCmd.error);
+          setWorld(currentWorld);
+          setTextKaraInterpreter(null);
+          return;
+        }
+
+        if (nextCmd.done || !nextCmd.command) {
+          break;
+        }
+
+        const execResult = executeSingleCommand(nextCmd.command, currentWorld);
+        if (execResult.error) {
+          toast.error(execResult.error);
+          setWorld(currentWorld);
+          setTextKaraInterpreter(null);
+          return;
+        }
+
+        currentWorld = execResult.world;
+      }
+
+      if (steps >= maxSteps) {
+        toast.error(`Execution limit exceeded (${maxSteps} steps). Possible infinite loop.`);
+      } else {
+        toast.success(`Skipped to end (${steps} steps)`);
+      }
+
+      setWorld(currentWorld);
+      setTextKaraInterpreter(null);
+      setTextKaraStepCount(0);
+      return;
+    }
   };
 
   const handleAddCommand = (command: CommandType) => {
@@ -1533,11 +1713,11 @@ const Index = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">Slow</span>
                       <Slider
-                        value={[2100 - executionSpeed]}
-                        onValueChange={(value) => setExecutionSpeed(2100 - value[0])}
-                        min={100}
-                        max={2000}
-                        step={100}
+                        value={[1050 - executionSpeed]}
+                        onValueChange={(value) => setExecutionSpeed(1050 - value[0])}
+                        min={50}
+                        max={1000}
+                        step={50}
                         className="flex-1"
                         aria-labelledby="speed-label-left"
                       />
@@ -1754,35 +1934,17 @@ const Index = () => {
                       End
                     </Button>
                     <Button
-                      onClick={() => {
-                        if (program.length === 0) return;
-                        setIsRunning(false);
-                        let tempWorld = world;
-                        for (let i = currentStep + 1; i < program.length; i++) {
-                          const cmd = program[i];
-                          switch (cmd) {
-                            case CommandType.MoveForward:
-                              tempWorld = moveForward(tempWorld);
-                              break;
-                            case CommandType.TurnLeft:
-                              tempWorld = turnLeft(tempWorld);
-                              break;
-                            case CommandType.TurnRight:
-                              tempWorld = turnRight(tempWorld);
-                              break;
-                            case CommandType.PickClover:
-                              tempWorld = pickClover(tempWorld);
-                              break;
-                            case CommandType.PlaceClover:
-                              tempWorld = placeClover(tempWorld);
-                              break;
-                          }
-                        }
-                        setWorld(tempWorld);
-                        setCurrentStep(-1);
-                        toast.success('Skipped to end');
-                      }}
-                      disabled={programmingLanguage === 'Kara' || ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) || program.length === 0 || currentStep >= program.length - 1}
+                      onClick={handleSkip}
+                      disabled={
+                        !((programmingLanguage === 'ScratchKara' && program.length > 0) ||
+                          (programmingLanguage === 'Kara' && !!fsmProgram.startStateId) ||
+                          (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) && (
+                            (programmingLanguage === 'JavaKara' && !!javaKaraCode.trim()) ||
+                            (programmingLanguage === 'PythonKara' && !!pythonKaraCode.trim()) ||
+                            (programmingLanguage === 'JavaScriptKara' && !!jsKaraCode.trim()) ||
+                            (programmingLanguage === 'RubyKara' && !!rubyKaraCode.trim())
+                          )))
+                      }
                       size="sm"
                       variant="outline"
                       className="gap-1"
@@ -1806,11 +1968,11 @@ const Index = () => {
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">Slow</span>
                       <Slider
-                        value={[2100 - executionSpeed]}
-                        onValueChange={(value) => setExecutionSpeed(2100 - value[0])}
-                        min={100}
-                        max={2000}
-                        step={100}
+                        value={[1050 - executionSpeed]}
+                        onValueChange={(value) => setExecutionSpeed(1050 - value[0])}
+                        min={50}
+                        max={1000}
+                        step={50}
                         className="flex-1"
                         aria-labelledby="speed-label-right"
                       />
@@ -2061,34 +2223,7 @@ const Index = () => {
                     setTextKaraInterpreter(null);
                     toast.info('Execution ended');
                   }}
-                  onSkip={programmingLanguage === 'ScratchKara' ? () => {
-                    if (program.length === 0) return;
-                    setIsRunning(false);
-                    let tempWorld = world;
-                    for (let i = currentStep + 1; i < program.length; i++) {
-                      const cmd = program[i];
-                      switch (cmd) {
-                        case CommandType.MoveForward:
-                          tempWorld = moveForward(tempWorld);
-                          break;
-                        case CommandType.TurnLeft:
-                          tempWorld = turnLeft(tempWorld);
-                          break;
-                        case CommandType.TurnRight:
-                          tempWorld = turnRight(tempWorld);
-                          break;
-                        case CommandType.PickClover:
-                          tempWorld = pickClover(tempWorld);
-                          break;
-                        case CommandType.PlaceClover:
-                          tempWorld = placeClover(tempWorld);
-                          break;
-                      }
-                    }
-                    setWorld(tempWorld);
-                    setCurrentStep(-1);
-                    toast.success('Skipped to end');
-                  } : undefined}
+                  onSkip={handleSkip}
                   canRun={
                     programmingLanguage === 'Kara' ? !!fsmProgram.startStateId :
                     ['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) ? (
@@ -2113,9 +2248,14 @@ const Index = () => {
                   }
                   canEnd={currentStep !== -1 || isRunning || isFsmRunning || isTextKaraRunning}
                   canSkip={
-                    programmingLanguage === 'ScratchKara' &&
-                    program.length > 0 &&
-                    currentStep < program.length - 1
+                    (programmingLanguage === 'ScratchKara' && program.length > 0) ||
+                    (programmingLanguage === 'Kara' && !!fsmProgram.startStateId) ||
+                    (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) && (
+                      (programmingLanguage === 'JavaKara' && !!javaKaraCode.trim()) ||
+                      (programmingLanguage === 'PythonKara' && !!pythonKaraCode.trim()) ||
+                      (programmingLanguage === 'JavaScriptKara' && !!jsKaraCode.trim()) ||
+                      (programmingLanguage === 'RubyKara' && !!rubyKaraCode.trim())
+                    ))
                   }
                 />
 
@@ -2165,35 +2305,7 @@ const Index = () => {
                 setTextKaraInterpreter(null);
                 toast.info('Execution ended');
               }}
-              onSkip={() => {
-                if (programmingLanguage === 'ScratchKara' && program.length > 0) {
-                  setIsRunning(false);
-                  let tempWorld = world;
-                  for (let i = currentStep + 1; i < program.length; i++) {
-                    const cmd = program[i];
-                    switch (cmd) {
-                      case CommandType.MoveForward:
-                        tempWorld = moveForward(tempWorld);
-                        break;
-                      case CommandType.TurnLeft:
-                        tempWorld = turnLeft(tempWorld);
-                        break;
-                      case CommandType.TurnRight:
-                        tempWorld = turnRight(tempWorld);
-                        break;
-                      case CommandType.PickClover:
-                        tempWorld = pickClover(tempWorld);
-                        break;
-                      case CommandType.PlaceClover:
-                        tempWorld = placeClover(tempWorld);
-                        break;
-                    }
-                  }
-                  setWorld(tempWorld);
-                  setCurrentStep(-1);
-                  toast.success('Skipped to end');
-                }
-              }}
+              onSkip={handleSkip}
               programmingLanguage={programmingLanguage}
               fsmProgram={fsmProgram}
               fsmCurrentState={fsmCurrentState}
@@ -2233,9 +2345,14 @@ const Index = () => {
               }
               canEnd={currentStep !== -1 || isRunning || isFsmRunning || isTextKaraRunning}
               canSkip={
-                programmingLanguage === 'ScratchKara' &&
-                program.length > 0 &&
-                currentStep < program.length - 1
+                (programmingLanguage === 'ScratchKara' && program.length > 0) ||
+                (programmingLanguage === 'Kara' && !!fsmProgram.startStateId) ||
+                (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) && (
+                  (programmingLanguage === 'JavaKara' && !!javaKaraCode.trim()) ||
+                  (programmingLanguage === 'PythonKara' && !!pythonKaraCode.trim()) ||
+                  (programmingLanguage === 'JavaScriptKara' && !!jsKaraCode.trim()) ||
+                  (programmingLanguage === 'RubyKara' && !!rubyKaraCode.trim())
+                ))
               }
             />
           </TabsContent>

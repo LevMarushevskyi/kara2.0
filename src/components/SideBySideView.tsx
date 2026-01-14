@@ -422,11 +422,11 @@ const SideBySideView = ({
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Slow</span>
               <Slider
-                value={[2100 - executionSpeed]}
-                onValueChange={(value) => onExecutionSpeedChange(2100 - value[0])}
-                min={100}
-                max={2000}
-                step={100}
+                value={[1050 - executionSpeed]}
+                onValueChange={(value) => onExecutionSpeedChange(1050 - value[0])}
+                min={50}
+                max={1000}
+                step={50}
                 className="flex-1"
               />
               <span className="text-xs text-muted-foreground">Fast</span>

@@ -350,3 +350,76 @@ export function validateFSMProgram(program: FSMProgram): {
 
   return { valid: true };
 }
+
+/**
+ * Maximum steps allowed for skip-to-end execution
+ * Protects against infinite loops
+ */
+const SKIP_MAX_STEPS = 10000;
+
+/**
+ * Executes an FSM program to completion (or until error/max steps)
+ * Used for "Skip to End" functionality
+ * Returns the final world state and execution result
+ */
+export function executeFSMToCompletion(
+  world: World,
+  program: FSMProgram,
+  startStateId: string,
+  maxSteps: number = SKIP_MAX_STEPS
+): {
+  world: World;
+  completed: boolean;
+  steps: number;
+  error?: string;
+} {
+  let currentWorld = world;
+  let currentStateId = startStateId;
+  let steps = 0;
+
+  while (steps < maxSteps) {
+    // Check if we've reached the STOP state
+    if (currentStateId === program.stopStateId) {
+      return {
+        world: currentWorld,
+        completed: true,
+        steps,
+      };
+    }
+
+    // Execute one step
+    const result = executeFSMStep(currentWorld, program, currentStateId);
+    steps++;
+
+    // Check for errors
+    if (result.error) {
+      return {
+        world: result.world,
+        completed: false,
+        steps,
+        error: result.error,
+      };
+    }
+
+    // Check if stopped (includes reaching STOP state)
+    if (result.stopped) {
+      return {
+        world: result.world,
+        completed: true,
+        steps,
+      };
+    }
+
+    // Update state for next iteration
+    currentWorld = result.world;
+    currentStateId = result.nextStateId;
+  }
+
+  // Exceeded max steps - likely infinite loop
+  return {
+    world: currentWorld,
+    completed: false,
+    steps,
+    error: `Execution limit exceeded (${maxSteps} steps). The program may have an infinite loop.`,
+  };
+}
