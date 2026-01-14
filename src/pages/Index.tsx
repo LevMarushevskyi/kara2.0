@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { List, Keyboard, HelpCircle, Code2, Play, Pause, SkipForward, Square, FastForward, Upload, Download, Settings, Sun, Moon, Monitor, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import WorldView from '@/components/WorldView';
 import ProgramPanel from '@/components/ProgramPanel';
@@ -22,7 +22,7 @@ import {
   parseFSMContent,
   isValidFSMProgram,
 } from '@/models/fsm';
-import { executeFSMStep, validateFSMProgram, findMatchingTransition } from '@/models/fsmExecutor';
+import { executeFSMStep, validateFSMProgram, findMatchingTransition, executeSingleFSMAction, getTransitionInfo } from '@/models/fsmExecutor';
 import { Scenario, saveProgress } from '@/models/scenario';
 import { scenarios, getScenarioById } from '@/models/scenarios';
 import {
@@ -78,6 +78,16 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+
+// Timing constants for FSM execution phases
+// These ensure visual phases are visible even at fast execution speeds
+const FSM_MIN_PREVIEW_DELAY = 80;  // Minimum ms to show transition/arrow preview
+const FSM_PREVIEW_RATIO = 0.25;    // Preview phases use 25% of execution speed
+
+// Helper to calculate delay for preview phases (transition-matched, showing-arrow)
+const getPreviewDelay = (executionSpeed: number): number => {
+  return Math.max(FSM_MIN_PREVIEW_DELAY, executionSpeed * FSM_PREVIEW_RATIO);
+};
 
 const Index = () => {
   const { announce } = useScreenReader();
@@ -155,11 +165,15 @@ const Index = () => {
   const [fsmCurrentState, setFsmCurrentState] = useState<string | null>(null);
   const [fsmCurrentTransition, setFsmCurrentTransition] = useState<string | null>(null);
   const [fsmPreviousState, setFsmPreviousState] = useState<string | null>(null); // Track where we came from for arrow highlighting
-  const [fsmPhase, setFsmPhase] = useState<'idle' | 'on-state' | 'showing-arrow'>('idle'); // Execution phase for highlighting
+  const [fsmPhase, setFsmPhase] = useState<'idle' | 'transition-matched' | 'executing-action' | 'showing-arrow'>('idle'); // Execution phase for highlighting
+  const [fsmCurrentActionIndex, setFsmCurrentActionIndex] = useState<number>(-1); // -1 = no action, 0+ = action index being executed
   const [isFsmRunning, setIsFsmRunning] = useState(false);
   const [fsmStepTrigger, setFsmStepTrigger] = useState(0); // Counter to trigger re-execution
   const [fsmStepCount, setFsmStepCount] = useState(0); // Step counter for DoS protection
   const FSM_MAX_STEPS = 10000; // Maximum FSM steps before auto-stop
+
+  // Ref to track if we're waiting for a scheduled step (prevents effect re-runs from causing instant execution)
+  const fsmStepScheduledRef = useRef(false);
 
   // Text-based Kara code states (one for each language)
   const [javaKaraCode, setJavaKaraCode] = useState<string>(() => loadCode('JavaKara'));
@@ -320,10 +334,18 @@ const Index = () => {
         announce(`Cannot run: ${validation.error}`, 'assertive');
         return;
       }
+      // Reset all FSM execution state before starting
+      setFsmCurrentState(null);
+      setFsmCurrentTransition(null);
+      setFsmPreviousState(null);
+      setFsmPhase('idle');
+      setFsmCurrentActionIndex(-1);
+      setFsmStepCount(0);
+      fsmStepScheduledRef.current = false; // Ensure ref is reset for new run
+
+      // Now start running
       setIsFsmRunning(true);
-      setFsmCurrentState(fsmProgram.startStateId);
-      setFsmStepTrigger(0); // Reset trigger counter for new run
-      setFsmStepCount(0); // Reset step counter for DoS protection
+      setFsmStepTrigger(prev => prev + 1); // Increment trigger to start execution
       toast.success('FSM program started!');
       announce('FSM program started');
       return;
@@ -385,7 +407,7 @@ const Index = () => {
   };
 
   const handleStep = () => {
-    // === FSM (Kara) Mode ===
+    // === FSM (Kara) Mode - Granular Step-by-Step Execution ===
     if (programmingLanguage === 'Kara') {
       // Validate FSM program first
       const validation = validateFSMProgram(fsmProgram);
@@ -395,64 +417,124 @@ const Index = () => {
         return;
       }
 
-      // If idle but we have a valid start state, the highlighting should already be set up
-      // by the useEffect. Just execute from the current state (which should be the start state).
-      // This handles the case where highlighting was set up but not yet executed.
-
-      // Phase 2: If on-state, execute the transition, show arrow for 500ms, then advance to next state
-      if (fsmPhase === 'on-state' && fsmCurrentState) {
-        // Execute one FSM step from current state
-        const result = executeFSMStep(world, fsmProgram, fsmCurrentState);
-
-        if (result.error) {
-          toast.error(result.error);
-          announce(result.error, 'assertive');
-          setFsmCurrentState(null);
-          setFsmCurrentTransition(null);
-          setFsmPreviousState(null);
-          setFsmPhase('idle');
+      // Phase: IDLE - Initialize and find first matching transition
+      if (fsmPhase === 'idle') {
+        const startState = fsmProgram.startStateId;
+        if (!startState) {
+          toast.error('No start state set');
           return;
         }
 
-        // Update world with execution results
-        setWorld(result.world);
+        // Find the matching transition
+        const matchingTransitionId = findMatchingTransition(world, fsmProgram, startState);
 
-        if (result.stopped) {
-          toast.success('FSM program completed!');
-          announce('FSM program completed');
-          setFsmCurrentState(null);
-          setFsmCurrentTransition(null);
-          setFsmPreviousState(null);
-          setFsmPhase('idle');
+        if (!matchingTransitionId) {
+          // Check if we're at STOP state
+          if (startState === fsmProgram.stopStateId) {
+            toast.info('Program is at STOP state');
+            return;
+          }
+          toast.error('No matching transition found in start state');
           return;
         }
 
-        // Show arrow phase: highlight the transition arrow and "Next State" dropdown
-        setFsmPreviousState(fsmCurrentState);
-        setFsmCurrentTransition(result.matchingTransitionId || null);
-        setFsmCurrentState(result.nextStateId);
-        setFsmPhase('showing-arrow');
+        // Set up initial state - highlight the matching transition
+        setFsmCurrentState(startState);
+        setFsmPreviousState(null);
+        setFsmCurrentTransition(matchingTransitionId);
+        setFsmCurrentActionIndex(-1);
+        setFsmPhase('transition-matched');
 
-        const nextStateName = fsmProgram.states.find(s => s.id === result.nextStateId)?.name || result.nextStateId;
-        announce(`Transitioning to: ${nextStateName}`);
-
-        // After 500ms, automatically advance to the next state's on-state phase
-        setTimeout(() => {
-          // Find the matching transition in the new state (use result.world which has the updated state)
-          const matchingTransitionId = findMatchingTransition(result.world, fsmProgram, result.nextStateId);
-          setFsmPreviousState(result.nextStateId);
-          setFsmCurrentTransition(matchingTransitionId);
-          setFsmPhase('on-state');
-
-          const stateName = fsmProgram.states.find(s => s.id === result.nextStateId)?.name || result.nextStateId;
-          announce(`Entered state: ${stateName}`);
-        }, 500);
-
+        const stateName = fsmProgram.states.find(s => s.id === startState)?.name || startState;
+        announce(`Entered state: ${stateName}. Transition matched.`);
         return;
       }
 
-      // If showing-arrow phase, ignore step presses (auto-transition handles it)
-      if (fsmPhase === 'showing-arrow') {
+      // Phase: TRANSITION-MATCHED - Execute all actions, show arrow, then move to next state
+      // All in one Step press with visual delays between each phase
+      if (fsmPhase === 'transition-matched' && fsmCurrentState && fsmCurrentTransition) {
+        const { actionCount, targetStateId } = getTransitionInfo(fsmProgram, fsmCurrentState, fsmCurrentTransition);
+        const currentStateId = fsmCurrentState;
+        const currentTransitionId = fsmCurrentTransition;
+
+        // Execute entire transition sequence with visual delays
+        const executeFullTransition = async () => {
+          let currentWorld = world;
+
+          // Phase 1: Execute all actions sequentially
+          for (let i = 0; i < actionCount; i++) {
+            // Update action index for visual highlighting
+            setFsmCurrentActionIndex(i);
+            setFsmPhase('executing-action');
+
+            // Execute the action
+            const result = executeSingleFSMAction(currentWorld, fsmProgram, currentStateId, currentTransitionId, i);
+
+            if (!result.success) {
+              toast.error(result.error || 'Action failed');
+              resetFsmExecution();
+              return;
+            }
+
+            currentWorld = result.world;
+            setWorld(currentWorld);
+            announce(`Executing action ${i + 1} of ${actionCount}`);
+
+            // Wait before next action
+            await new Promise(resolve => setTimeout(resolve, getPreviewDelay(executionSpeed)));
+          }
+
+          // Phase 2: Show arrow/next-state highlight
+          setFsmCurrentActionIndex(-1);
+          setFsmPhase('showing-arrow');
+          announce('Transitioning to next state...');
+
+          // Wait to show the arrow highlight
+          await new Promise(resolve => setTimeout(resolve, getPreviewDelay(executionSpeed)));
+
+          // Phase 3: Move to next state
+          if (!targetStateId) {
+            toast.error('Invalid transition target');
+            resetFsmExecution();
+            return;
+          }
+
+          // Check if we've reached STOP
+          if (targetStateId === fsmProgram.stopStateId) {
+            toast.success('FSM program completed!');
+            announce('FSM program completed');
+            resetFsmExecution();
+            return;
+          }
+
+          // Move to the next state and find matching transition
+          setFsmPreviousState(currentStateId);
+          setFsmCurrentState(targetStateId);
+
+          const newMatchingTransition = findMatchingTransition(currentWorld, fsmProgram, targetStateId);
+
+          if (!newMatchingTransition) {
+            toast.error('Kara is stuck - no matching transition in new state!');
+            resetFsmExecution();
+            return;
+          }
+
+          setFsmCurrentTransition(newMatchingTransition);
+          setFsmCurrentActionIndex(-1);
+          setFsmPhase('transition-matched');
+
+          const nextStateName = fsmProgram.states.find(s => s.id === targetStateId)?.name || targetStateId;
+          announce(`Moved to state: ${nextStateName}. Ready for next step.`);
+        };
+
+        executeFullTransition();
+        return;
+      }
+
+      // Phase: EXECUTING-ACTION or SHOWING-ARROW - Step is already in progress
+      // If user presses Step during execution, do nothing (transition is already running)
+      if (fsmPhase === 'executing-action' || fsmPhase === 'showing-arrow') {
+        // Transition is being executed automatically, ignore additional Step presses
         return;
       }
 
@@ -737,8 +819,19 @@ const Index = () => {
     setFsmCurrentTransition(null);
     setFsmPreviousState(null);
     setFsmPhase('idle');
+    setFsmCurrentActionIndex(-1);
     loadScenario(currentScenario.id);
   };
+
+  // Helper to reset FSM execution state without reloading scenario
+  const resetFsmExecution = useCallback(() => {
+    setFsmCurrentState(null);
+    setFsmCurrentTransition(null);
+    setFsmPreviousState(null);
+    setFsmPhase('idle');
+    setFsmCurrentActionIndex(-1);
+    setFsmStepCount(0);
+  }, []);
 
   const handleNextExercise = () => {
     const currentIndex = scenarios.findIndex((s) => s.id === currentScenario.id);
@@ -841,7 +934,7 @@ const Index = () => {
   });
 
   // Initialize FSM highlighting when in Kara mode with a valid start state
-  // This sets up the start state as highlighted (on-state) so it's ready to execute
+  // This pre-highlights the start state and matching transition so users can see what will run
   useEffect(() => {
     if (programmingLanguage !== 'Kara') return;
     if (!fsmProgram.startStateId) return;
@@ -852,12 +945,13 @@ const Index = () => {
     const validation = validateFSMProgram(fsmProgram);
     if (!validation.valid) return;
 
-    // Set up the start state as highlighted (ready to execute on first step)
+    // Set up the start state as highlighted with matching transition shown
     const matchingTransitionId = findMatchingTransition(world, fsmProgram, fsmProgram.startStateId);
     setFsmCurrentState(fsmProgram.startStateId);
     setFsmPreviousState(null);
     setFsmCurrentTransition(matchingTransitionId);
-    setFsmPhase('on-state');
+    setFsmCurrentActionIndex(-1);
+    setFsmPhase('transition-matched');
   }, [programmingLanguage, fsmProgram.startStateId, fsmProgram, isFsmRunning, fsmPhase, world]);
 
   // Check goal whenever world changes (both during run and step mode)
@@ -889,74 +983,182 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning, currentStep, program, executionSpeed]);
 
-  // FSM Auto-execution
+  // FSM Auto-execution (granular step-by-step)
   useEffect(() => {
-    if (!isFsmRunning) return;
+    if (!isFsmRunning) {
+      fsmStepScheduledRef.current = false;
+      return;
+    }
 
-    // Initialize on first run
-    const currentState = fsmCurrentState || fsmProgram.startStateId;
-    if (!currentState) return;
+    // If a step is already scheduled, don't schedule another one
+    // This prevents the effect from running multiple times due to state changes
+    if (fsmStepScheduledRef.current) {
+      return;
+    }
 
     // Check for max step limit (DoS protection)
     if (fsmStepCount >= FSM_MAX_STEPS) {
       setIsFsmRunning(false);
-      setFsmCurrentState(null);
-      setFsmCurrentTransition(null);
-      setFsmPreviousState(null);
-      setFsmPhase('idle');
-      setFsmStepCount(0);
+      resetFsmExecution();
       toast.error(`Execution limit exceeded (${FSM_MAX_STEPS} steps). Possible infinite loop.`);
       announce(`FSM error: Execution limit exceeded. Possible infinite loop.`, 'assertive');
       return;
     }
 
-    // Execute one FSM step
-    const result = executeFSMStep(world, fsmProgram, currentState);
+    const scheduleNextStep = (delay: number) => {
+      fsmStepScheduledRef.current = true;
+      const timeoutId = setTimeout(() => {
+        fsmStepScheduledRef.current = false;
+        setFsmStepTrigger(prev => prev + 1);
+      }, delay);
+      return timeoutId;
+    };
 
-    // Update the world, step count, and transition
-    setWorld(result.world);
-    setFsmStepCount(prev => prev + 1);
-    setFsmPreviousState(currentState);
-    setFsmCurrentTransition(result.matchingTransitionId || null);
+    // Cleanup function that clears timeout and resets ref
+    const createCleanup = (timerId: NodeJS.Timeout) => {
+      return () => {
+        clearTimeout(timerId);
+        fsmStepScheduledRef.current = false;
+      };
+    };
 
-    // Check if we hit an error
-    if (result.error) {
-      setIsFsmRunning(false);
-      setFsmCurrentState(null);
-      setFsmCurrentTransition(null);
-      setFsmPreviousState(null);
-      setFsmPhase('idle');
-      setFsmStepCount(0);
-      toast.error(result.error);
-      announce(`FSM error: ${result.error}`, 'assertive');
-      return;
+    // Phase: IDLE - Initialize
+    if (fsmPhase === 'idle') {
+      const startState = fsmProgram.startStateId;
+      if (!startState) {
+        setIsFsmRunning(false);
+        toast.error('No start state set');
+        return;
+      }
+
+      const matchingTransitionId = findMatchingTransition(world, fsmProgram, startState);
+
+      if (!matchingTransitionId) {
+        if (startState === fsmProgram.stopStateId) {
+          setIsFsmRunning(false);
+          toast.success('FSM program completed!');
+          return;
+        }
+        setIsFsmRunning(false);
+        toast.error('No matching transition found');
+        return;
+      }
+
+      setFsmCurrentState(startState);
+      setFsmCurrentTransition(matchingTransitionId);
+      setFsmCurrentActionIndex(-1);
+      setFsmPhase('transition-matched');
+
+      // Brief pause to show the matched transition
+      const timer = scheduleNextStep(getPreviewDelay(executionSpeed));
+      return createCleanup(timer);
     }
 
-    // Check if we've stopped
-    if (result.stopped) {
-      setIsFsmRunning(false);
-      setFsmCurrentState(null);
-      setFsmCurrentTransition(null);
-      setFsmPreviousState(null);
-      setFsmPhase('idle');
-      setFsmStepCount(0);
-      toast.success('FSM program completed!');
-      announce('FSM program completed');
-      return;
+    // Phase: TRANSITION-MATCHED - Start actions or skip to arrow
+    if (fsmPhase === 'transition-matched' && fsmCurrentState && fsmCurrentTransition) {
+      setFsmStepCount(prev => prev + 1);
+
+      const { actionCount } = getTransitionInfo(fsmProgram, fsmCurrentState, fsmCurrentTransition);
+
+      if (actionCount === 0) {
+        setFsmPhase('showing-arrow');
+        const timer = scheduleNextStep(getPreviewDelay(executionSpeed));
+        return createCleanup(timer);
+      } else {
+        // Execute first action
+        const result = executeSingleFSMAction(world, fsmProgram, fsmCurrentState, fsmCurrentTransition, 0);
+
+        if (!result.success) {
+          setIsFsmRunning(false);
+          resetFsmExecution();
+          toast.error(result.error || 'Action failed');
+          return;
+        }
+
+        setWorld(result.world);
+        setFsmCurrentActionIndex(0);
+        setFsmPhase('executing-action');
+
+        const timer = scheduleNextStep(executionSpeed);
+        return createCleanup(timer);
+      }
     }
 
-    // Animate: show arrow briefly, then move to next state
-    setFsmPhase('showing-arrow');
-    setFsmCurrentState(result.nextStateId);
+    // Phase: EXECUTING-ACTION - Execute next or move to arrow
+    if (fsmPhase === 'executing-action' && fsmCurrentState && fsmCurrentTransition) {
+      const { actionCount } = getTransitionInfo(fsmProgram, fsmCurrentState, fsmCurrentTransition);
+      const nextActionIndex = fsmCurrentActionIndex + 1;
 
-    const timer = setTimeout(() => {
-      setFsmPhase('on-state');
-      setFsmStepTrigger(prev => prev + 1); // Trigger next execution
-    }, executionSpeed);
+      if (nextActionIndex >= actionCount) {
+        // All actions done
+        setFsmCurrentActionIndex(-1);
+        setFsmPhase('showing-arrow');
+        const timer = scheduleNextStep(getPreviewDelay(executionSpeed));
+        return createCleanup(timer);
+      } else {
+        // Execute next action
+        const result = executeSingleFSMAction(world, fsmProgram, fsmCurrentState, fsmCurrentTransition, nextActionIndex);
 
-    return () => clearTimeout(timer);
+        if (!result.success) {
+          setIsFsmRunning(false);
+          resetFsmExecution();
+          toast.error(result.error || 'Action failed');
+          return;
+        }
+
+        setWorld(result.world);
+        setFsmCurrentActionIndex(nextActionIndex);
+
+        const timer = scheduleNextStep(executionSpeed);
+        return createCleanup(timer);
+      }
+    }
+
+    // Phase: SHOWING-ARROW - Move to next state
+    if (fsmPhase === 'showing-arrow' && fsmCurrentState && fsmCurrentTransition) {
+      const { targetStateId } = getTransitionInfo(fsmProgram, fsmCurrentState, fsmCurrentTransition);
+
+      if (!targetStateId) {
+        setIsFsmRunning(false);
+        resetFsmExecution();
+        toast.error('Invalid transition');
+        return;
+      }
+
+      if (targetStateId === fsmProgram.stopStateId) {
+        setIsFsmRunning(false);
+        resetFsmExecution();
+        toast.success('FSM program completed!');
+        return;
+      }
+
+      // Move to next state
+      setFsmPreviousState(fsmCurrentState);
+      setFsmCurrentState(targetStateId);
+
+      // Find matching transition in new state
+      const newMatchingTransition = findMatchingTransition(world, fsmProgram, targetStateId);
+
+      if (!newMatchingTransition) {
+        setIsFsmRunning(false);
+        resetFsmExecution();
+        toast.error('Kara is stuck - no matching transition in new state!');
+        return;
+      }
+
+      setFsmCurrentTransition(newMatchingTransition);
+      setFsmCurrentActionIndex(-1);
+      setFsmPhase('transition-matched');
+
+      const timer = scheduleNextStep(getPreviewDelay(executionSpeed));
+      return createCleanup(timer);
+    }
+
+    // Note: We intentionally omit fsmPhase, fsmCurrentState, fsmCurrentTransition, fsmCurrentActionIndex
+    // from the dependency array. The effect should only run when fsmStepTrigger changes or isFsmRunning changes.
+    // State changes within the effect don't need to re-trigger it - the timeout handles scheduling.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFsmRunning, fsmStepTrigger, executionSpeed]);
+  }, [isFsmRunning, fsmStepTrigger]);
 
   // Text-based code auto-execution (streaming interpreter)
   useEffect(() => {
@@ -1511,7 +1713,7 @@ const Index = () => {
                       disabled={
                         isRunning || isFsmRunning || isTextKaraRunning ||
                         (programmingLanguage === 'ScratchKara' && program.length === 0) ||
-                        (programmingLanguage === 'Kara' && (!fsmProgram.startStateId || fsmPhase === 'showing-arrow')) ||
+                        (programmingLanguage === 'Kara' && !fsmProgram.startStateId) ||
                         (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) &&
                           ((programmingLanguage === 'JavaKara' && !javaKaraCode.trim()) ||
                            (programmingLanguage === 'PythonKara' && !pythonKaraCode.trim()) ||
@@ -1537,6 +1739,7 @@ const Index = () => {
                         setFsmCurrentTransition(null);
                         setFsmPreviousState(null);
                         setFsmPhase('idle');
+                        setFsmCurrentActionIndex(-1);
                         setIsTextKaraRunning(false);
                         setTextKaraInterpreter(null);
                         toast.info('Execution ended');
@@ -1764,6 +1967,7 @@ const Index = () => {
                       currentExecutingTransitionId={fsmCurrentTransition}
                       previousStateId={fsmPreviousState}
                       executionPhase={fsmPhase}
+                      currentActionIndex={fsmCurrentActionIndex}
                       isExecuting={isFsmRunning || fsmPhase !== 'idle'}
                     />
                   </div>
@@ -1852,6 +2056,7 @@ const Index = () => {
                     setFsmCurrentTransition(null);
                     setFsmPreviousState(null);
                     setFsmPhase('idle');
+                    setFsmCurrentActionIndex(-1);
                     setIsTextKaraRunning(false);
                     setTextKaraInterpreter(null);
                     toast.info('Execution ended');
@@ -1896,7 +2101,7 @@ const Index = () => {
                   }
                   canStep={
                     !(isRunning || isFsmRunning || isTextKaraRunning) && (
-                      (programmingLanguage === 'Kara' && !!fsmProgram.startStateId && fsmPhase !== 'showing-arrow') ||
+                      (programmingLanguage === 'Kara' && !!fsmProgram.startStateId) ||
                       (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) && (
                         (programmingLanguage === 'JavaKara' && !!javaKaraCode.trim()) ||
                         (programmingLanguage === 'PythonKara' && !!pythonKaraCode.trim()) ||
@@ -1955,6 +2160,7 @@ const Index = () => {
                 setFsmCurrentTransition(null);
                 setFsmPreviousState(null);
                 setFsmPhase('idle');
+                setFsmCurrentActionIndex(-1);
                 setIsTextKaraRunning(false);
                 setTextKaraInterpreter(null);
                 toast.info('Execution ended');
@@ -1994,6 +2200,7 @@ const Index = () => {
               fsmPreviousState={fsmPreviousState}
               fsmCurrentTransition={fsmCurrentTransition}
               fsmPhase={fsmPhase}
+              fsmCurrentActionIndex={fsmCurrentActionIndex}
               program={program}
               currentStep={currentStep}
               textKaraCode={
@@ -2014,7 +2221,7 @@ const Index = () => {
               }
               canStep={
                 !isRunning && !isFsmRunning && !isTextKaraRunning && (
-                  (programmingLanguage === 'Kara' && !!fsmProgram.startStateId && fsmPhase !== 'showing-arrow') ||
+                  (programmingLanguage === 'Kara' && !!fsmProgram.startStateId) ||
                   (['JavaKara', 'PythonKara', 'JavaScriptKara', 'RubyKara'].includes(programmingLanguage) && (
                     (programmingLanguage === 'JavaKara' && !!javaKaraCode.trim()) ||
                     (programmingLanguage === 'PythonKara' && !!pythonKaraCode.trim()) ||

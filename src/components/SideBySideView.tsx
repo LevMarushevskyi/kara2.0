@@ -37,7 +37,8 @@ interface SideBySideViewProps {
   fsmCurrentState: string | null;
   fsmPreviousState?: string | null;
   fsmCurrentTransition?: string | null;
-  fsmPhase?: 'idle' | 'on-state' | 'showing-arrow';
+  fsmPhase?: 'idle' | 'transition-matched' | 'executing-action' | 'showing-arrow';
+  fsmCurrentActionIndex?: number;
 
   // ScratchKara mode
   program: CommandType[];
@@ -76,6 +77,7 @@ const SideBySideView = ({
   fsmPreviousState = null,
   fsmCurrentTransition = null,
   fsmPhase = 'idle',
+  fsmCurrentActionIndex = -1,
   program,
   currentStep,
   textKaraCode,
@@ -388,6 +390,7 @@ const SideBySideView = ({
               previousStateId={fsmPreviousState}
               executionPhase={fsmPhase}
               currentTransitionId={fsmCurrentTransition}
+              currentActionIndex={fsmCurrentActionIndex}
             />
           )}
 
@@ -411,33 +414,42 @@ const SideBySideView = ({
 };
 
 // Execution phase type for FSM visualization
-type FSMExecutionPhase = 'idle' | 'on-state' | 'transition-arrow';
+type FSMExecutionPhase = 'idle' | 'transition-matched' | 'executing-action' | 'showing-arrow';
 
 // FSM Read-Only View with execution highlighting
 const FSMReadOnlyView = ({
   program,
   currentStateId,
-  previousStateId: parentPreviousStateId = null,
+  previousStateId: _parentPreviousStateId = null,
   executionPhase: parentExecutionPhase = 'idle',
   currentTransitionId = null,
+  currentActionIndex = -1,
 }: {
   program: FSMProgram;
   currentStateId: string | null;
   previousStateId?: string | null;
-  executionPhase?: 'idle' | 'on-state' | 'showing-arrow';
+  executionPhase?: FSMExecutionPhase;
   currentTransitionId?: string | null;
+  currentActionIndex?: number;
 }) => {
-  // Derive execution phase and highlighting from parent-controlled state
-  // Map parent phase to internal FSMExecutionPhase for rendering
-  const executionPhase: FSMExecutionPhase = parentExecutionPhase === 'showing-arrow' ? 'transition-arrow' :
-                                             parentExecutionPhase === 'on-state' ? 'on-state' : 'idle';
+  // Use parent execution phase directly
+  const executionPhase: FSMExecutionPhase = parentExecutionPhase;
 
   // Determine what should be highlighted based on parent-controlled phase
-  // When 'on-state': highlight the current state
-  // When 'showing-arrow': highlight the arrow from previous to current state
-  const highlightedStateId = parentExecutionPhase === 'on-state' ? currentStateId : null;
-  const transitionFromState = parentExecutionPhase === 'showing-arrow' ? parentPreviousStateId : null;
-  const transitionToState = parentExecutionPhase === 'showing-arrow' ? currentStateId : null;
+  // transition-matched, executing-action: highlight the current state and transition row
+  // showing-arrow: highlight the arrow from current to target state
+  const isStateActive = executionPhase === 'transition-matched' || executionPhase === 'executing-action' || executionPhase === 'showing-arrow';
+  const highlightedStateId = isStateActive ? currentStateId : null;
+  const transitionFromState = executionPhase === 'showing-arrow' ? currentStateId : null;
+  const transitionToState = executionPhase === 'showing-arrow' ? (
+    // Get target state from the current transition
+    (() => {
+      if (!currentStateId || !currentTransitionId) return null;
+      const state = program.states.find(s => s.id === currentStateId);
+      const transition = state?.transitions.find(t => t.id === currentTransitionId);
+      return transition?.targetStateId || null;
+    })()
+  ) : null;
 
   // Calculate bounding box of all states to determine canvas size
   const STATE_RADIUS = 48; // Max radius (stop state)
@@ -576,7 +588,7 @@ const FSMReadOnlyView = ({
 
                   // Self-loop (always render)
                   if (state.id === targetId) {
-                    const isArrowHighlighted = executionPhase === 'transition-arrow' &&
+                    const isArrowHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === state.id &&
                       transitionToState === targetId;
 
@@ -628,10 +640,10 @@ const FSMReadOnlyView = ({
                     processedPairs.add(pairKey);
 
                     // Determine which direction is highlighted
-                    const isForwardHighlighted = executionPhase === 'transition-arrow' &&
+                    const isForwardHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === state.id &&
                       transitionToState === targetId;
-                    const isReverseHighlighted = executionPhase === 'transition-arrow' &&
+                    const isReverseHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === targetId &&
                       transitionToState === state.id;
                     const isHighlighted = isForwardHighlighted || isReverseHighlighted;
@@ -662,7 +674,7 @@ const FSMReadOnlyView = ({
                     );
                   } else {
                     // Unidirectional arrow
-                    const isArrowHighlighted = executionPhase === 'transition-arrow' &&
+                    const isArrowHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === state.id &&
                       transitionToState === targetId;
 
@@ -705,7 +717,7 @@ const FSMReadOnlyView = ({
             const isStateHighlighted = highlightedStateId === state.id;
 
             // Check if start arrow should be highlighted (when transitioning to start state from idle)
-            const isStartArrowHighlighted = isStartState && executionPhase === 'transition-arrow' && transitionFromState === null;
+            const isStartArrowHighlighted = isStartState && executionPhase === 'showing-arrow' && transitionFromState === null;
 
             // Apply offset to state positions
             const stateX = state.x + offsetX;
@@ -764,8 +776,9 @@ const FSMReadOnlyView = ({
         <div className="mt-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg flex-shrink-0">
           <p className="text-sm">
             <span className="font-medium">
-              {executionPhase === 'transition-arrow' && 'Transitioning to: '}
-              {executionPhase === 'on-state' && 'Current State: '}
+              {executionPhase === 'showing-arrow' && 'Transitioning to: '}
+              {executionPhase === 'transition-matched' && 'Transition Matched: '}
+              {executionPhase === 'executing-action' && 'Executing Action: '}
               {executionPhase === 'idle' && 'Current State: '}
             </span>
             <span className="text-green-600 dark:text-green-400 font-bold">
@@ -778,9 +791,8 @@ const FSMReadOnlyView = ({
       {/* Transitions Panel - shows transitions from the relevant state */}
       {(() => {
         // Determine which state's transitions to show
-        const displayStateId = executionPhase === 'on-state' ? currentStateId :
-                               executionPhase === 'transition-arrow' ? parentPreviousStateId :
-                               currentStateId;
+        // For all phases, show transitions from the current state
+        const displayStateId = currentStateId;
         const displayState = program.states.find(s => s.id === displayStateId);
 
         if (!displayState || displayStateId === program.stopStateId) return null;
@@ -817,9 +829,9 @@ const FSMReadOnlyView = ({
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {transitions.map((transition) => {
                 const isRowExecuting = currentTransitionId === transition.id &&
-                  executionPhase === 'on-state';
+                  (executionPhase === 'transition-matched' || executionPhase === 'executing-action');
                 const isRowTransitioning = currentTransitionId === transition.id &&
-                  executionPhase === 'transition-arrow';
+                  executionPhase === 'showing-arrow';
                 const targetState = program.states.find(s => s.id === transition.targetStateId);
 
                 return (
@@ -850,20 +862,51 @@ const FSMReadOnlyView = ({
                       {/* Arrow separator */}
                       <span className="text-muted-foreground">→</span>
 
-                      {/* Actions */}
+                      {/* Actions with individual highlighting */}
                       <div className="flex gap-1">
                         {transition.actions.length === 0 ? (
                           <span className="text-xs text-muted-foreground italic">no actions</span>
                         ) : (
-                          transition.actions.map((action, idx) => (
-                            <span
-                              key={idx}
-                              className="text-lg"
-                              title={action.type}
-                            >
-                              {getActionIcon(action.type)}
-                            </span>
-                          ))
+                          transition.actions.map((action, idx) => {
+                            // Check if this specific action is being executed
+                            const isActionExecuting =
+                              isRowExecuting &&
+                              executionPhase === 'executing-action' &&
+                              idx === currentActionIndex;
+
+                            // Check if this action has already been executed
+                            const isActionCompleted =
+                              isRowExecuting &&
+                              executionPhase === 'executing-action' &&
+                              idx < currentActionIndex;
+
+                            // Check if action is pending
+                            const isActionPending =
+                              isRowExecuting &&
+                              (executionPhase === 'transition-matched' ||
+                               (executionPhase === 'executing-action' && idx > currentActionIndex));
+
+                            return (
+                              <span
+                                key={idx}
+                                className={`relative text-lg px-1 rounded transition-all ${
+                                  isActionExecuting
+                                    ? 'bg-green-500/30 ring-2 ring-green-500/50 scale-110'
+                                    : isActionCompleted
+                                    ? 'opacity-50'
+                                    : isActionPending
+                                    ? 'bg-yellow-100 dark:bg-yellow-900/30'
+                                    : ''
+                                }`}
+                                title={action.type}
+                              >
+                                {getActionIcon(action.type)}
+                                {isActionExecuting && (
+                                  <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
+                                )}
+                              </span>
+                            );
+                          })
                         )}
                       </div>
 

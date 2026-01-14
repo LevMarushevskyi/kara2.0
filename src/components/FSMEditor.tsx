@@ -6,11 +6,118 @@ import {
   FSMState,
   DetectorType,
 } from '@/models/fsm';
-import { Plus, Play, Trash2 } from 'lucide-react';
+import { Plus, Play, Trash2, Bug } from 'lucide-react';
 import { useState } from 'react';
 
+// Detector icon component - shows Kara with detected object in relative position
+// Uses the same visual elements as WorldView for consistency
+const DetectorIcon = ({
+  type,
+  size = 40
+}: {
+  type: 'treeFront' | 'treeLeft' | 'treeRight' | 'mushroomFront' | 'onLeaf';
+  size?: number;
+}) => {
+  // Calculate sizes based on icon size
+  const bugSize = size * 0.4;
+  const emojiSize = size * 0.45;
+  const questionSize = size * 0.25;
+
+  return (
+    <div
+      className="relative flex items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      {type === 'treeFront' && (
+        <>
+          {/* 2x2 grid: tree on top, Kara on bottom */}
+          <div className="absolute inset-0 grid grid-cols-1 grid-rows-2 items-center justify-items-center">
+            <span style={{ fontSize: emojiSize }}>🌳</span>
+            <Bug className="text-red-500" size={bugSize} />
+          </div>
+          <span
+            className="absolute text-muted-foreground font-bold"
+            style={{ fontSize: questionSize, top: 2, right: 2 }}
+          >
+            ?
+          </span>
+        </>
+      )}
+
+      {type === 'treeLeft' && (
+        <>
+          {/* 2 columns: tree on left, Kara on right */}
+          <div className="absolute inset-0 grid grid-cols-2 items-center justify-items-center">
+            <span style={{ fontSize: emojiSize }}>🌳</span>
+            <Bug className="text-red-500" size={bugSize} />
+          </div>
+          <span
+            className="absolute text-muted-foreground font-bold"
+            style={{ fontSize: questionSize, top: 2, right: 2 }}
+          >
+            ?
+          </span>
+        </>
+      )}
+
+      {type === 'treeRight' && (
+        <>
+          {/* 2 columns: Kara on left, tree on right */}
+          <div className="absolute inset-0 grid grid-cols-2 items-center justify-items-center">
+            <Bug className="text-red-500" size={bugSize} />
+            <span style={{ fontSize: emojiSize }}>🌳</span>
+          </div>
+          <span
+            className="absolute text-muted-foreground font-bold"
+            style={{ fontSize: questionSize, top: 2, right: 2 }}
+          >
+            ?
+          </span>
+        </>
+      )}
+
+      {type === 'mushroomFront' && (
+        <>
+          {/* 2 rows: mushroom on top, Kara on bottom */}
+          <div className="absolute inset-0 grid grid-cols-1 grid-rows-2 items-center justify-items-center">
+            <span style={{ fontSize: emojiSize }}>🍄</span>
+            <Bug className="text-red-500" size={bugSize} />
+          </div>
+          <span
+            className="absolute text-muted-foreground font-bold"
+            style={{ fontSize: questionSize, top: 2, right: 2 }}
+          >
+            ?
+          </span>
+        </>
+      )}
+
+      {type === 'onLeaf' && (
+        <>
+          {/* Kara on top of clover - same as WorldView cell rendering */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span
+              className="absolute opacity-40"
+              style={{ fontSize: emojiSize * 1.2 }}
+            >
+              🍀
+            </span>
+            <Bug className="text-red-500 relative z-10" size={bugSize} />
+          </div>
+          <span
+            className="absolute text-muted-foreground font-bold"
+            style={{ fontSize: questionSize, top: 2, right: 2 }}
+          >
+            ?
+          </span>
+        </>
+      )}
+    </div>
+  );
+};
+
 // Execution phase type for FSM visualization
-type FSMExecutionPhase = 'idle' | 'on-state' | 'transition-arrow';
+type FSMExecutionPhase = 'idle' | 'transition-matched' | 'executing-action' | 'showing-arrow';
 
 interface FSMEditorProps {
   program: FSMProgram;
@@ -19,7 +126,8 @@ interface FSMEditorProps {
   currentExecutingStateId?: string | null;
   currentExecutingTransitionId?: string | null;
   previousStateId?: string | null; // For arrow highlighting - where we came from
-  executionPhase?: 'idle' | 'on-state' | 'showing-arrow'; // Phase controlled by parent
+  executionPhase?: FSMExecutionPhase; // Phase controlled by parent
+  currentActionIndex?: number; // Currently executing action index (-1 = none)
   isExecuting?: boolean;
 }
 
@@ -32,6 +140,7 @@ const FSMEditor = ({
   currentExecutingTransitionId = null,
   previousStateId: parentPreviousStateId = null,
   executionPhase: parentExecutionPhase = 'idle',
+  currentActionIndex = -1,
   isExecuting = false,
 }: FSMEditorProps) => {
   const [selectedStateId, setSelectedStateId] = useState<string>(
@@ -41,17 +150,24 @@ const FSMEditor = ({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
 
-  // Derive execution phase and highlighting from parent-controlled state
-  // Map parent phase to internal FSMExecutionPhase for rendering
-  const executionPhase: FSMExecutionPhase = parentExecutionPhase === 'showing-arrow' ? 'transition-arrow' :
-                                             parentExecutionPhase === 'on-state' ? 'on-state' : 'idle';
+  // Use parent execution phase directly (no mapping needed anymore)
+  const executionPhase: FSMExecutionPhase = parentExecutionPhase;
 
   // Determine what should be highlighted based on parent-controlled phase
-  // When 'on-state': highlight the current state
-  // When 'showing-arrow': highlight the arrow from previous to current state
-  const highlightedStateId = parentExecutionPhase === 'on-state' ? currentExecutingStateId : null;
-  const transitionFromState = parentExecutionPhase === 'showing-arrow' ? parentPreviousStateId : null;
-  const transitionToState = parentExecutionPhase === 'showing-arrow' ? currentExecutingStateId : null;
+  // transition-matched, executing-action: highlight the current state and transition row
+  // showing-arrow: highlight the arrow from current to target state
+  const isStateActive = executionPhase === 'transition-matched' || executionPhase === 'executing-action' || executionPhase === 'showing-arrow';
+  const highlightedStateId = isStateActive ? currentExecutingStateId : null;
+  const transitionFromState = executionPhase === 'showing-arrow' ? currentExecutingStateId : null;
+  const transitionToState = executionPhase === 'showing-arrow' ? (
+    // Get target state from the current transition
+    (() => {
+      if (!currentExecutingStateId || !currentExecutingTransitionId) return null;
+      const state = program.states.find(s => s.id === currentExecutingStateId);
+      const transition = state?.transitions.find(t => t.id === currentExecutingTransitionId);
+      return transition?.targetStateId || null;
+    })()
+  ) : null;
 
   const editableStates = program.states.filter((s) => s.id !== program.stopStateId);
 
@@ -510,7 +626,7 @@ const FSMEditor = ({
 
                   // Self-loop (always render)
                   if (state.id === targetId) {
-                    const isArrowHighlighted = executionPhase === 'transition-arrow' &&
+                    const isArrowHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === state.id &&
                       transitionToState === targetId;
 
@@ -562,10 +678,10 @@ const FSMEditor = ({
                     processedPairs.add(pairKey);
 
                     // Determine which direction is highlighted
-                    const isForwardHighlighted = executionPhase === 'transition-arrow' &&
+                    const isForwardHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === state.id &&
                       transitionToState === targetId;
-                    const isReverseHighlighted = executionPhase === 'transition-arrow' &&
+                    const isReverseHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === targetId &&
                       transitionToState === state.id;
                     const isHighlighted = isForwardHighlighted || isReverseHighlighted;
@@ -596,7 +712,7 @@ const FSMEditor = ({
                     );
                   } else {
                     // Unidirectional arrow
-                    const isArrowHighlighted = executionPhase === 'transition-arrow' &&
+                    const isArrowHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === state.id &&
                       transitionToState === targetId;
 
@@ -640,7 +756,7 @@ const FSMEditor = ({
             const isStateHighlighted = highlightedStateId === state.id;
 
             // Check if start arrow should be highlighted (when transitioning to the start state from idle)
-            const isStartArrowHighlighted = isStartState && executionPhase === 'transition-arrow' && transitionFromState === null;
+            const isStartArrowHighlighted = isStartState && executionPhase === 'showing-arrow' && transitionFromState === null;
 
             const radius = isStopState ? 48 : 40; // Half of state bubble size (96px/80px)
 
@@ -796,36 +912,30 @@ const FSMEditor = ({
                         {/* Detectors Section (shared by all rows) */}
                         <div className="border-2 border-border rounded-lg p-3 bg-muted/10">
                           <label className="text-xs font-medium text-muted-foreground mb-2 block">
-                            Detectors
+                            Active Detectors
                           </label>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap">
                             {getActiveDetectors().map((detector) => (
                               <div
                                 key={detector}
                                 onClick={() => handleToggleDetector(detector)}
-                                className="flex flex-col items-center gap-1 px-3 py-2 bg-secondary rounded-lg border border-border cursor-pointer hover:bg-secondary/80 w-16"
+                                className="flex items-center justify-center p-1 bg-secondary rounded-lg border border-border cursor-pointer hover:bg-secondary/80"
+                                title={`Remove ${
+                                  detector === 'treeFront' ? 'tree front'
+                                  : detector === 'treeLeft' ? 'tree left'
+                                  : detector === 'treeRight' ? 'tree right'
+                                  : detector === 'mushroomFront' ? 'mushroom front'
+                                  : 'on clover'
+                                } detector`}
                               >
-                                <span className="text-xl flex items-center gap-0.5">
-                                  {detector === 'treeFront' && (
-                                    <>
-                                      🌳<span className="text-xs font-bold">F</span>
-                                    </>
-                                  )}
-                                  {detector === 'treeLeft' && (
-                                    <>
-                                      🌳<span className="text-xs font-bold">L</span>
-                                    </>
-                                  )}
-                                  {detector === 'treeRight' && (
-                                    <>
-                                      🌳<span className="text-xs font-bold">R</span>
-                                    </>
-                                  )}
-                                  {detector === 'mushroomFront' && '🍄'}
-                                  {detector === 'onLeaf' && '🍀'}
-                                </span>
+                                <DetectorIcon type={detector} size={36} />
                               </div>
                             ))}
+                            {getActiveDetectors().length === 0 && (
+                              <span className="text-xs text-muted-foreground italic py-2">
+                                Click detectors on the right to add →
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -838,14 +948,14 @@ const FSMEditor = ({
                           {getCurrentRows().map((row) => {
                             const activeDetectors = getActiveDetectors();
                             // Check if this row is the currently executing transition
-                            // For on-state: transition row is in the current state (currentExecutingStateId)
-                            // For transition-arrow: transition row is in the previous state (parentPreviousStateId)
+                            // For transition-matched/executing-action: transition row is in the current state
+                            // For showing-arrow: transition row is in the current state (about to leave)
                             const isRowExecuting = currentExecutingTransitionId === row.id &&
-                              executionPhase === 'on-state' &&
+                              (executionPhase === 'transition-matched' || executionPhase === 'executing-action') &&
                               selectedStateId === currentExecutingStateId;
                             const isRowTransitioning = currentExecutingTransitionId === row.id &&
-                              executionPhase === 'transition-arrow' &&
-                              selectedStateId === parentPreviousStateId;
+                              executionPhase === 'showing-arrow' &&
+                              selectedStateId === currentExecutingStateId;
 
                             return (
                               <div
@@ -916,33 +1026,66 @@ const FSMEditor = ({
                                         {row.actions.length === 0 ? (
                                           <div className="text-xs text-muted-foreground whitespace-nowrap">
                                             {selectedRowId === row.id
-                                              ? 'Drag actions here'
+                                              ? 'Double-click or drag actions here'
                                               : 'No actions'}
                                           </div>
                                         ) : (
-                                          row.actions.map((action, index) => (
-                                            <div
-                                              key={index}
-                                              className="flex items-center gap-1 px-2 py-1 bg-secondary rounded-full border border-border flex-shrink-0"
-                                            >
-                                              <span className="text-xl">
-                                                {action.type === 'move' && '↑'}
-                                                {action.type === 'turnLeft' && '↶'}
-                                                {action.type === 'turnRight' && '↷'}
-                                                {action.type === 'pickClover' && '🍀'}
-                                                {action.type === 'placeClover' && '⬇️'}
-                                              </span>
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleRemoveActionFromRow(row.id, index);
-                                                }}
-                                                className="text-xs hover:text-destructive"
+                                          row.actions.map((action, index) => {
+                                            // Check if this specific action is being executed
+                                            const isActionExecuting =
+                                              isRowExecuting &&
+                                              executionPhase === 'executing-action' &&
+                                              index === currentActionIndex;
+
+                                            // Check if this action has already been executed in current transition
+                                            const isActionCompleted =
+                                              isRowExecuting &&
+                                              executionPhase === 'executing-action' &&
+                                              index < currentActionIndex;
+
+                                            // Check if action is pending (not yet executed)
+                                            const isActionPending =
+                                              isRowExecuting &&
+                                              (executionPhase === 'transition-matched' ||
+                                               (executionPhase === 'executing-action' && index > currentActionIndex));
+
+                                            return (
+                                              <div
+                                                key={index}
+                                                className={`relative flex items-center gap-1 px-2 py-1 rounded-full border flex-shrink-0 transition-all ${
+                                                  isActionExecuting
+                                                    ? 'bg-green-500/30 border-green-500 ring-2 ring-green-500/50 scale-110 shadow-lg shadow-green-500/30'
+                                                    : isActionCompleted
+                                                    ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 opacity-60'
+                                                    : isActionPending
+                                                    ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700'
+                                                    : 'bg-secondary border-border'
+                                                }`}
                                               >
-                                                ×
-                                              </button>
-                                            </div>
-                                          ))
+                                                <span className="text-xl">
+                                                  {action.type === 'move' && '↑'}
+                                                  {action.type === 'turnLeft' && '↶'}
+                                                  {action.type === 'turnRight' && '↷'}
+                                                  {action.type === 'pickClover' && '🍀'}
+                                                  {action.type === 'placeClover' && '⬇️'}
+                                                </span>
+                                                {isActionExecuting && (
+                                                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-ping" />
+                                                )}
+                                                {!isExecuting && (
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleRemoveActionFromRow(row.id, index);
+                                                    }}
+                                                    className="text-xs hover:text-destructive"
+                                                  >
+                                                    ×
+                                                  </button>
+                                                )}
+                                              </div>
+                                            );
+                                          })
                                         )}
                                       </div>
                                     </div>
@@ -989,7 +1132,12 @@ const FSMEditor = ({
                       </div>
 
                       {/* Right Column - Detectors */}
-                      <div className="w-32 space-y-1">
+                      <div className="w-20 flex flex-col gap-1">
+                        {/* Detectors Label */}
+                        <div className="text-xs font-semibold text-muted-foreground text-center pb-1 border-b border-border mb-1">
+                          Detectors
+                        </div>
+
                         {(['treeFront', 'treeLeft', 'treeRight', 'mushroomFront', 'onLeaf'] as DetectorType[]).map(
                           (detector) => {
                             const isActive = getActiveDetectors().includes(detector);
@@ -997,38 +1145,25 @@ const FSMEditor = ({
                               <div
                                 key={detector}
                                 onClick={() => handleToggleDetector(detector)}
-                                className={`flex flex-col items-center gap-1 p-2 rounded cursor-pointer transition-all ${
+                                className={`flex items-center justify-center p-1 rounded cursor-pointer transition-all ${
                                   isActive
                                     ? 'bg-accent/20 border-2 border-accent/50 hover:bg-accent/30'
                                     : 'bg-secondary border border-border hover:bg-secondary/80'
                                 }`}
                                 title={
                                   detector === 'treeFront'
-                                    ? 'Tree Front'
+                                    ? 'Tree in front?'
                                     : detector === 'treeLeft'
-                                    ? 'Tree Left'
+                                    ? 'Tree to the left?'
                                     : detector === 'treeRight'
-                                    ? 'Tree Right'
+                                    ? 'Tree to the right?'
                                     : detector === 'mushroomFront'
-                                    ? 'Mushroom Front'
-                                    : 'On Leaf'
+                                    ? 'Mushroom in front?'
+                                    : 'Standing on clover?'
                                 }
                               >
-                              <span className="text-2xl">
-                                {detector === 'treeFront' && '🌳'}
-                                {detector === 'treeLeft' && '🌳'}
-                                {detector === 'treeRight' && '🌳'}
-                                {detector === 'mushroomFront' && '🍄'}
-                                {detector === 'onLeaf' && '🍀'}
-                              </span>
-                              <span className="text-xs">
-                                {detector === 'treeFront' && 'Front'}
-                                {detector === 'treeLeft' && 'Left'}
-                                {detector === 'treeRight' && 'Right'}
-                                {detector === 'mushroomFront' && 'Front'}
-                                {detector === 'onLeaf' && 'Leaf'}
-                              </span>
-                            </div>
+                                <DetectorIcon type={detector} size={48} />
+                              </div>
                             );
                           }
                         )}
@@ -1048,8 +1183,9 @@ const FSMEditor = ({
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span className="text-sm font-medium">
-              {executionPhase === 'transition-arrow' && 'Transitioning to: '}
-              {executionPhase === 'on-state' && 'Current State: '}
+              {executionPhase === 'showing-arrow' && 'Transitioning to: '}
+              {executionPhase === 'transition-matched' && 'Transition Matched: '}
+              {executionPhase === 'executing-action' && 'Executing Action: '}
               {executionPhase === 'idle' && 'Current State: '}
               <span className="text-green-600 dark:text-green-400 ml-1">
                 {program.states.find(s => s.id === currentExecutingStateId)?.name || 'Unknown'}
@@ -1062,9 +1198,8 @@ const FSMEditor = ({
       {/* Read-only Transitions Panel during execution - shows transitions from the relevant state */}
       {isExecuting && (() => {
         // Determine which state's transitions to show
-        const displayStateId = executionPhase === 'on-state' ? currentExecutingStateId :
-                               executionPhase === 'transition-arrow' ? parentPreviousStateId :
-                               currentExecutingStateId;
+        // For transition-matched/executing-action/showing-arrow: show the current state's transitions
+        const displayStateId = currentExecutingStateId;
         const displayState = program.states.find(s => s.id === displayStateId);
 
         if (!displayState || displayStateId === program.stopStateId) return null;
@@ -1101,9 +1236,9 @@ const FSMEditor = ({
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {transitions.map((transition) => {
                 const isRowExecuting = currentExecutingTransitionId === transition.id &&
-                  executionPhase === 'on-state';
+                  (executionPhase === 'transition-matched' || executionPhase === 'executing-action');
                 const isRowTransitioning = currentExecutingTransitionId === transition.id &&
-                  executionPhase === 'transition-arrow';
+                  executionPhase === 'showing-arrow';
                 const targetState = program.states.find(s => s.id === transition.targetStateId);
 
                 return (
@@ -1134,20 +1269,51 @@ const FSMEditor = ({
                       {/* Arrow separator */}
                       <span className="text-muted-foreground">→</span>
 
-                      {/* Actions */}
+                      {/* Actions with individual highlighting */}
                       <div className="flex gap-1">
                         {transition.actions.length === 0 ? (
                           <span className="text-xs text-muted-foreground italic">no actions</span>
                         ) : (
-                          transition.actions.map((action, idx) => (
-                            <span
-                              key={idx}
-                              className="text-lg"
-                              title={action.type}
-                            >
-                              {getActionIcon(action.type)}
-                            </span>
-                          ))
+                          transition.actions.map((action, idx) => {
+                            // Check if this specific action is being executed
+                            const isActionExecuting =
+                              isRowExecuting &&
+                              executionPhase === 'executing-action' &&
+                              idx === currentActionIndex;
+
+                            // Check if this action has already been executed
+                            const isActionCompleted =
+                              isRowExecuting &&
+                              executionPhase === 'executing-action' &&
+                              idx < currentActionIndex;
+
+                            // Check if action is pending
+                            const isActionPending =
+                              isRowExecuting &&
+                              (executionPhase === 'transition-matched' ||
+                               (executionPhase === 'executing-action' && idx > currentActionIndex));
+
+                            return (
+                              <span
+                                key={idx}
+                                className={`relative text-lg px-1 rounded transition-all ${
+                                  isActionExecuting
+                                    ? 'bg-green-500/30 ring-2 ring-green-500/50 scale-110'
+                                    : isActionCompleted
+                                    ? 'opacity-50'
+                                    : isActionPending
+                                    ? 'bg-yellow-100 dark:bg-yellow-900/30'
+                                    : ''
+                                }`}
+                                title={action.type}
+                              >
+                                {getActionIcon(action.type)}
+                                {isActionExecuting && (
+                                  <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
+                                )}
+                              </span>
+                            );
+                          })
                         )}
                       </div>
 

@@ -67,7 +67,7 @@ export function findMatchingTransition(
 /**
  * Executes a single FSM action and returns the updated world
  */
-function executeAction(world: World, action: FSMAction): World {
+export function executeAction(world: World, action: FSMAction): World {
   switch (action.type) {
     case 'move':
       return moveForward(world);
@@ -222,6 +222,93 @@ export function executeFSMStep(
     nextStateId: matchingTransition.targetStateId,
     stopped: matchingTransition.targetStateId === program.stopStateId,
     matchingTransitionId: matchingTransition.id,
+  };
+}
+
+/**
+ * Executes a single action from a transition and returns the result
+ * Used for granular step-by-step execution visualization
+ */
+export function executeSingleFSMAction(
+  world: World,
+  program: FSMProgram,
+  stateId: string,
+  transitionId: string,
+  actionIndex: number
+): {
+  world: World;
+  success: boolean;
+  error?: string;
+} {
+  const state = program.states.find(s => s.id === stateId);
+  if (!state) {
+    return { world, success: false, error: 'State not found' };
+  }
+
+  const transition = state.transitions.find(t => t.id === transitionId);
+  if (!transition) {
+    return { world, success: false, error: 'Transition not found' };
+  }
+
+  const action = transition.actions[actionIndex];
+  if (!action) {
+    return { world, success: false, error: 'Action not found' };
+  }
+
+  const previousWorld = world;
+  const newWorld = executeAction(world, action);
+
+  // Check if action failed (world unchanged when it shouldn't be)
+  if (newWorld === previousWorld) {
+    if (action.type === 'move') {
+      return {
+        world: newWorld,
+        success: false,
+        error: `Kara cannot move forward - there's something blocking the way!`,
+      };
+    }
+    if (action.type === 'pickClover') {
+      return {
+        world: newWorld,
+        success: false,
+        error: `Kara cannot pick up a clover - there's no clover here!`,
+      };
+    }
+    if (action.type === 'placeClover') {
+      return {
+        world: newWorld,
+        success: false,
+        error: `Kara cannot place a clover here - the cell is not empty!`,
+      };
+    }
+  }
+
+  return { world: newWorld, success: true };
+}
+
+/**
+ * Gets the transition info including action count and target state
+ * Used for granular step-by-step execution visualization
+ */
+export function getTransitionInfo(
+  program: FSMProgram,
+  stateId: string,
+  transitionId: string
+): {
+  transition: FSMTransition | null;
+  actionCount: number;
+  targetStateId: string | null;
+} {
+  const state = program.states.find(s => s.id === stateId);
+  if (!state) return { transition: null, actionCount: 0, targetStateId: null };
+
+  const transition = state.transitions.find(t => t.id === transitionId);
+  if (!transition) return { transition: null, actionCount: 0, targetStateId: null };
+
+  return {
+    transition,
+    actionCount: transition.actions.length,
+    targetStateId: transition.targetStateId,
   };
 }
 
