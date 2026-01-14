@@ -31,7 +31,7 @@ const objects = [
   { type: 'KARA' as const, icon: '🐞', label: 'Kara' },
   { type: CellType.Clover, icon: '🍀', label: 'Clover' },
   { type: CellType.Mushroom, icon: '🍄', label: 'Mushroom' },
-  { type: CellType.Tree, icon: '🌳', label: 'Tree' },
+  { type: CellType.Tree, icon: '🪾', label: 'Tree' },
 ];
 
 const WorldEditor = ({

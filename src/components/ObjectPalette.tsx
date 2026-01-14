@@ -9,7 +9,7 @@ interface ObjectPaletteProps {
 const objects = [
   { type: CellType.Clover, icon: '🍀', label: 'Clover' },
   { type: CellType.Mushroom, icon: '🍄', label: 'Mushroom' },
-  { type: CellType.Tree, icon: '🌳', label: 'Tree' },
+  { type: CellType.Tree, icon: '🪾', label: 'Tree' },
 ];
 
 const ObjectPalette = ({ onSelectObject }: ObjectPaletteProps) => {

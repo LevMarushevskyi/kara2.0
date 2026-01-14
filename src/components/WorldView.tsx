@@ -74,7 +74,7 @@ const Cell = memo(({
       case CellType.Mushroom:
         return '🍄';
       case CellType.Tree:
-        return '🌳';
+        return '🪾';
       default:
         return '';
     }
@@ -522,7 +522,7 @@ const WorldView = ({ world, onCellClick, onCellDrop, onCellClear, selectedObject
           emoji = '🍄';
           break;
         case CellType.Tree:
-          emoji = '🌳';
+          emoji = '🪾';
           break;
       }
     }

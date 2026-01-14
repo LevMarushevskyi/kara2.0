@@ -29,7 +29,7 @@ const DetectorIcon = ({
       {type === 'treeFront' && (
         <>
           <div className="absolute inset-0 grid grid-cols-1 grid-rows-2 items-center justify-items-center">
-            <span style={{ fontSize: emojiSize }}>🌳</span>
+            <span style={{ fontSize: emojiSize }}>🪾</span>
             <Bug className="text-red-500" size={bugSize} />
           </div>
           <span className="absolute text-muted-foreground font-bold" style={{ fontSize: questionSize, top: 2, right: 2 }}>?</span>
@@ -38,7 +38,7 @@ const DetectorIcon = ({
       {type === 'treeLeft' && (
         <>
           <div className="absolute inset-0 grid grid-cols-2 items-center justify-items-center">
-            <span style={{ fontSize: emojiSize }}>🌳</span>
+            <span style={{ fontSize: emojiSize }}>🪾</span>
             <Bug className="text-red-500" size={bugSize} />
           </div>
           <span className="absolute text-muted-foreground font-bold" style={{ fontSize: questionSize, top: 2, right: 2 }}>?</span>
@@ -48,7 +48,7 @@ const DetectorIcon = ({
         <>
           <div className="absolute inset-0 grid grid-cols-2 items-center justify-items-center">
             <Bug className="text-red-500" size={bugSize} />
-            <span style={{ fontSize: emojiSize }}>🌳</span>
+            <span style={{ fontSize: emojiSize }}>🪾</span>
           </div>
           <span className="absolute text-muted-foreground font-bold" style={{ fontSize: questionSize, top: 2, right: 2 }}>?</span>
         </>

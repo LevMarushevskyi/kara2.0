@@ -31,7 +31,7 @@ const DetectorIcon = ({
         <>
           {/* 2x2 grid: tree on top, Kara on bottom */}
           <div className="absolute inset-0 grid grid-cols-1 grid-rows-2 items-center justify-items-center">
-            <span style={{ fontSize: emojiSize }}>🌳</span>
+            <span style={{ fontSize: emojiSize }}>🪾</span>
             <Bug className="text-red-500" size={bugSize} />
           </div>
           <span
@@ -47,7 +47,7 @@ const DetectorIcon = ({
         <>
           {/* 2 columns: tree on left, Kara on right */}
           <div className="absolute inset-0 grid grid-cols-2 items-center justify-items-center">
-            <span style={{ fontSize: emojiSize }}>🌳</span>
+            <span style={{ fontSize: emojiSize }}>🪾</span>
             <Bug className="text-red-500" size={bugSize} />
           </div>
           <span
@@ -64,7 +64,7 @@ const DetectorIcon = ({
           {/* 2 columns: Kara on left, tree on right */}
           <div className="absolute inset-0 grid grid-cols-2 items-center justify-items-center">
             <Bug className="text-red-500" size={bugSize} />
-            <span style={{ fontSize: emojiSize }}>🌳</span>
+            <span style={{ fontSize: emojiSize }}>🪾</span>
           </div>
           <span
             className="absolute text-muted-foreground font-bold"

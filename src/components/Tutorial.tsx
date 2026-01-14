@@ -32,7 +32,7 @@ const tutorialSteps: TutorialStep[] = [
   {
     title: 'The World Grid',
     description:
-      "This is Kara's world - a grid filled with objects. The red ladybug (🐞) is Kara, who you'll control. You'll see clovers (🍀), trees (🌳), mushrooms (🍄), and walls (🧱).",
+      "This is Kara's world - a grid filled with objects. The red ladybug (🐞) is Kara, who you'll control. You'll see clovers (🍀), trees (🪾), mushrooms (🍄), and walls (🧱).",
     position: 'center',
   },
   {
