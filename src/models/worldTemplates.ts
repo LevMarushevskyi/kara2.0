@@ -89,13 +89,13 @@ export function parseWorldFile(xmlContent: string): World {
   const karaElement = doc.querySelector('XmlKaraList XmlKara');
   let characterX = Math.floor(sizex / 2);
   let characterY = Math.floor(sizey / 2);
-  let characterDirection = Direction.North;
+  let characterDirection = Direction.East;
 
   if (karaElement) {
     characterX = parseInt(karaElement.getAttribute('x') || String(characterX), 10);
     characterY = parseInt(karaElement.getAttribute('y') || String(characterY), 10);
     const directionNum = parseInt(karaElement.getAttribute('direction') || '0', 10);
-    characterDirection = KARAX_DIRECTION_TO_INTERNAL[directionNum] || Direction.North;
+    characterDirection = KARAX_DIRECTION_TO_INTERNAL[directionNum] || Direction.East;
   }
 
   return {
