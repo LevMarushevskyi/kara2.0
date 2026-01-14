@@ -1007,37 +1007,76 @@ const FSMEditor = ({
                   if (isBidirectional) {
                     processedPairs.add(pairKey);
 
-                    // Determine which direction is highlighted
+                    // Calculate geometry for curved arcs
+                    const dx = targetState.x - state.x;
+                    const dy = targetState.y - state.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const angle = Math.atan2(dy, dx);
+
+                    // Perpendicular vector for curve control points
+                    const perpX = -dy / distance;
+                    const perpY = dx / distance;
+
+                    // Curve offset scales with distance, capped at 40px
+                    const curveOffset = Math.min(40, distance * 0.25);
+
+                    // Midpoint
+                    const midX = (state.x + targetState.x) / 2;
+                    const midY = (state.y + targetState.y) / 2;
+
+                    // Control points for the two arcs
+                    const controlPoint1 = {
+                      x: midX + perpX * curveOffset,
+                      y: midY + perpY * curveOffset,
+                    };
+                    const controlPoint2 = {
+                      x: midX - perpX * curveOffset,
+                      y: midY - perpY * curveOffset,
+                    };
+
+                    // Start/end points for arc from state -> targetState
+                    const startX1 = state.x + Math.cos(angle) * sourceRadius;
+                    const startY1 = state.y + Math.sin(angle) * sourceRadius;
+                    const endX1 = targetState.x - Math.cos(angle) * (targetRadius + 8);
+                    const endY1 = targetState.y - Math.sin(angle) * (targetRadius + 8);
+
+                    // Start/end points for arc from targetState -> state (reverse direction)
+                    const startX2 = targetState.x - Math.cos(angle) * targetRadius;
+                    const startY2 = targetState.y - Math.sin(angle) * targetRadius;
+                    const endX2 = state.x + Math.cos(angle) * (sourceRadius + 8);
+                    const endY2 = state.y + Math.sin(angle) * (sourceRadius + 8);
+
+                    // Check which direction is highlighted
                     const isForwardHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === state.id &&
                       transitionToState === targetId;
                     const isReverseHighlighted = executionPhase === 'showing-arrow' &&
                       transitionFromState === targetId &&
                       transitionToState === state.id;
-                    const isHighlighted = isForwardHighlighted || isReverseHighlighted;
 
-                    // Calculate arrow geometry
-                    const dx = targetState.x - state.x;
-                    const dy = targetState.y - state.y;
-                    const angle = Math.atan2(dy, dx);
-
-                    const startX = state.x + Math.cos(angle) * (sourceRadius + 8);
-                    const startY = state.y + Math.sin(angle) * (sourceRadius + 8);
-                    const endX = targetState.x - Math.cos(angle) * (targetRadius + 8);
-                    const endY = targetState.y - Math.sin(angle) * (targetRadius + 8);
-
+                    // Arc 1: state -> targetState
                     arrows.push(
-                      <line
-                        key={`bidirectional-${pairKey}`}
-                        x1={startX}
-                        y1={startY}
-                        x2={endX}
-                        y2={endY}
-                        stroke={isHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
-                        strokeWidth={isHighlighted ? 3 : 2}
-                        markerStart={isHighlighted ? 'url(#arrowhead-start-active)' : 'url(#arrowhead-start)'}
-                        markerEnd={isHighlighted ? 'url(#arrowhead-active)' : 'url(#arrowhead)'}
-                        className={isHighlighted ? '' : 'text-foreground'}
+                      <path
+                        key={`arc-${state.id}-to-${targetId}`}
+                        d={`M ${startX1} ${startY1} Q ${controlPoint1.x} ${controlPoint1.y} ${endX1} ${endY1}`}
+                        fill="none"
+                        stroke={isForwardHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
+                        strokeWidth={isForwardHighlighted ? 3 : 2}
+                        markerEnd={isForwardHighlighted ? 'url(#arrowhead-active)' : 'url(#arrowhead)'}
+                        className={isForwardHighlighted ? '' : 'text-foreground'}
+                      />
+                    );
+
+                    // Arc 2: targetState -> state
+                    arrows.push(
+                      <path
+                        key={`arc-${targetId}-to-${state.id}`}
+                        d={`M ${startX2} ${startY2} Q ${controlPoint2.x} ${controlPoint2.y} ${endX2} ${endY2}`}
+                        fill="none"
+                        stroke={isReverseHighlighted ? 'rgb(34, 197, 94)' : 'currentColor'}
+                        strokeWidth={isReverseHighlighted ? 3 : 2}
+                        markerEnd={isReverseHighlighted ? 'url(#arrowhead-active)' : 'url(#arrowhead)'}
+                        className={isReverseHighlighted ? '' : 'text-foreground'}
                       />
                     );
                   } else {
