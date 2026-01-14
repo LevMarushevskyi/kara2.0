@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { CommandType } from '@/models/program';
 import { ArrowUp, RotateCcw, RotateCw } from 'lucide-react';
+import { PickCloverIcon, PlaceCloverIcon } from '@/components/CloverActionIcons';
 
 interface CommandPanelProps {
   onExecuteCommand: (command: CommandType) => void;
@@ -17,9 +18,9 @@ const getCommandIcon = (type: CommandType) => {
     case CommandType.TurnRight:
       return <RotateCw className="h-4 w-4" />;
     case CommandType.PickClover:
-      return <span className="text-base">🍀</span>;
+      return <PickCloverIcon />;
     case CommandType.PlaceClover:
-      return <span className="text-base">⬇️</span>;
+      return <PlaceCloverIcon />;
   }
 };
 

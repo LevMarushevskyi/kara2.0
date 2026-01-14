@@ -7,6 +7,7 @@ import {
 } from '@/models/fsm';
 import { Plus, Play, Trash2, Bug, ZoomIn, ZoomOut, Maximize2, X } from 'lucide-react';
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { PickCloverIcon, PlaceCloverIcon } from '@/components/CloverActionIcons';
 
 // Detector icon component - shows Kara with detected object in relative position
 // Uses the same visual elements as WorldView for consistency
@@ -1300,7 +1301,7 @@ const FSMEditor = ({
                           className="flex flex-col items-center gap-1 p-2 bg-secondary rounded cursor-move hover:bg-secondary/80 border border-border"
                           title="Pick Clover"
                         >
-                          <span className="text-2xl">🍀</span>
+                          <PickCloverIcon size="text-2xl" />
                         </div>
                         <div
                           draggable
@@ -1309,7 +1310,7 @@ const FSMEditor = ({
                           className="flex flex-col items-center gap-1 p-2 bg-secondary rounded cursor-move hover:bg-secondary/80 border border-border"
                           title="Place Clover"
                         >
-                          <span className="text-2xl">⬇️</span>
+                          <PlaceCloverIcon size="text-2xl" />
                         </div>
                       </div>
 
@@ -1472,8 +1473,8 @@ const FSMEditor = ({
                                                   {action.type === 'move' && '↑'}
                                                   {action.type === 'turnLeft' && '↶'}
                                                   {action.type === 'turnRight' && '↷'}
-                                                  {action.type === 'pickClover' && '🍀'}
-                                                  {action.type === 'placeClover' && '⬇️'}
+                                                  {action.type === 'pickClover' && <PickCloverIcon size="text-lg" />}
+                                                  {action.type === 'placeClover' && <PlaceCloverIcon size="text-lg" />}
                                                 </span>
                                                 {isActionExecuting && (
                                                   <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-ping" />

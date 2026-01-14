@@ -13,6 +13,7 @@ import {
   Repeat,
 } from 'lucide-react';
 import { DragEvent } from 'react';
+import { PickCloverIcon, PlaceCloverIcon } from '@/components/CloverActionIcons';
 
 interface ProgrammingPanelProps {
   program: CommandType[];
@@ -36,9 +37,9 @@ const getCommandIcon = (type: CommandType) => {
     case CommandType.TurnRight:
       return <RotateCw className="h-4 w-4" />;
     case CommandType.PickClover:
-      return <span className="text-base">🍀</span>;
+      return <PickCloverIcon />;
     case CommandType.PlaceClover:
-      return <span className="text-base">⬇️</span>;
+      return <PlaceCloverIcon />;
   }
 };
 

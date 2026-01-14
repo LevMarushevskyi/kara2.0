@@ -8,6 +8,7 @@ import { World } from '@/models/types';
 import { FSMProgram } from '@/models/fsm';
 import { CommandType } from '@/models/program';
 import { GridColorTheme, ViewMode } from '@/hooks/useSettings';
+import { PickCloverIcon, PlaceCloverIcon } from '@/components/CloverActionIcons';
 
 // Detector icon component - shows Kara with detected object in relative position
 const DetectorIcon = ({
@@ -971,13 +972,13 @@ const FSMReadOnlyView = ({
         };
 
         // Action icons
-        const getActionIcon = (type: string) => {
+        const getActionIcon = (type: string): React.ReactNode => {
           switch (type) {
             case 'move': return '↑';
             case 'turnLeft': return '↶';
             case 'turnRight': return '↷';
-            case 'pickClover': return '🍀';
-            case 'placeClover': return '⬇️';
+            case 'pickClover': return <PickCloverIcon size="text-sm" />;
+            case 'placeClover': return <PlaceCloverIcon size="text-sm" />;
             default: return '?';
           }
         };
