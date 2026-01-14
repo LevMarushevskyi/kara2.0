@@ -12,6 +12,7 @@ import FSMEditor from '@/components/FSMEditor';
 import CodeEditor from '@/components/CodeEditor';
 import SideBySideView from '@/components/SideBySideView';
 import ExecutionControlPanel from '@/components/ExecutionControlPanel';
+import WorldPreview from '@/components/WorldPreview';
 import { moveForward, turnLeft, turnRight, pickClover, placeClover } from '@/models/world';
 import { World, CellType, Position } from '@/models/types';
 import { CommandType, repeatLastCommands } from '@/models/program';
@@ -2259,20 +2260,22 @@ const Index = () => {
                   }
                 />
 
-                {/* World Preview (scaled down view of entire world) */}
+                {/* World Preview (follows Kara) */}
                 <Card className="p-3">
-                  <h3 className="text-sm font-semibold mb-2">World Preview</h3>
-                  <div
-                    className="bg-muted/20 rounded-lg border-2 border-border overflow-hidden flex items-center justify-center"
-                    style={{ height: '200px' }}
-                  >
-                    <div style={{ transform: 'scale(0.35)', transformOrigin: 'center' }}>
-                      <WorldView
-                        world={world}
-                        gridColorTheme={gridColorTheme}
-                        viewMode={viewMode}
-                      />
-                    </div>
+                  <h3 className="text-sm font-semibold mb-2 flex items-center justify-between">
+                    <span>World Preview</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      ({world.character.position.x + 1}, {world.character.position.y + 1})
+                    </span>
+                  </h3>
+                  <div className="bg-muted/20 rounded-lg border-2 border-border overflow-hidden">
+                    <WorldPreview
+                      world={world}
+                      gridColorTheme={gridColorTheme}
+                      viewMode={viewMode}
+                      previewHeight={200}
+                      cellSize={36}
+                    />
                   </div>
                 </Card>
               </aside>
