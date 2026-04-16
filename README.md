@@ -119,9 +119,10 @@ Pure TypeScript modules with no React dependencies. Fully testable and reusable.
 - [ ] Classroom/Teacher view (shareable links to specific levels/programs)
 - [ ] Implement actual exercises from legacy version
 - [ ] Ensure upload/download works through all test cases
-- [ ] Add Mobile compatability?
-- [ ] Fix comment functionallity in IDE
-- [ ] Add determinisitc/non-deterministic modes
+- [ ] Add Mobile compatibility?
+- [ ] Fix comment functionality in IDE
+- [ ] Add deterministic/non-deterministic modes
+- [ ] Rotating 4 times right instead of 1 left and vice versa
 
 
 ---
