@@ -120,9 +120,12 @@ Pure TypeScript modules with no React dependencies. Fully testable and reusable.
 - [ ] Implement actual exercises from legacy version
 - [ ] Ensure upload/download works through all test cases
 - [ ] Add Mobile compatibility?
-- [ ] Fix comment functionality in IDE
+- [ ] Fix comment functionality in IDEs
 - [ ] Add deterministic/non-deterministic modes
 - [ ] Rotating 4 times right instead of 1 left and vice versa
+- [ ] Mini map Kara facing direction
+- [ ] Mini map coordinates duplication
+- [ ] Proper click/drag on the world map to seamlessly add/remove objects
 
 
 ---
