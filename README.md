@@ -116,6 +116,8 @@ Pure TypeScript modules with no React dependencies. Fully testable and reusable.
 
 ## Misc
 
+- [ ] Error handling when user removes Kara from the map and tries to run an action
+- [ ] Arrow pointing to stop not appearing
 - [ ] Classroom/Teacher view (shareable links to specific levels/programs)
 - [ ] Implement actual exercises from legacy version
 - [ ] Ensure upload/download works through all test cases
